@@ -1,5 +1,7 @@
 package com.localmath.ui
 
+import com.localmath.engine.Eng
+
 import com.localmath.engine.Graph
 import com.localmath.engine.Solution
 
@@ -25,7 +27,12 @@ object SolutionHtml {
 
     private fun jsString(s: String) = "\"" + s.replace("\\", "\\\\").replace("\"", "\\\"").replace("\n", " ") + "\""
 
-    fun build(s: Solution, c: MathColors): String {
+    /** With [eng] on, numbers in the answer also get an engineering-notation form (e.g. 3.197 k). */
+    fun build(solution: Solution, c: MathColors, eng: Boolean = false): String {
+        val s = if (!eng) solution else solution.copy(
+            approx = solution.approx?.let { Eng.decorate(it) }
+                ?: Eng.decorate(solution.answer).takeIf { it != solution.answer }?.let { "= " + it.substringAfter("\\left(= ").removeSuffix("\\right)") }
+        )
         val steps = s.steps.mapIndexed { i, step ->
             "<div class=\"card\"><div class=\"title\">Step ${i + 1} · ${esc(step.title)}</div>" +
                 "<div class=\"math\">\\[${esc(step.math)}\\]</div>" +

@@ -24,6 +24,38 @@ If Android Studio offers to upgrade the Android Gradle Plugin, it's safe to acce
   infinitely-many cases
 - History of solved problems (Room database, stored only on the device)
 
+### New in 0.6.0 (Normal / Notebook)
+
+- **Normal / Notebook switch** at the top of the main screen.
+  - *Normal*: one problem, full step-by-step working (as before).
+  - *Notebook*: a running list of lines, each showing just `problem → answer`. Saved in the Room database
+    (table `notebook`, added by a migration so existing history is kept), so it's still there next time.
+- **Chaining**: later lines use values found earlier. `2x + 3 = 11` → x = 4, then `y = 3x + 2` → y = 14,
+  `z = y − x` → z = 10, `x + y + z` → 28. Each line shows which values it used. A line whose letters are
+  all known already (e.g. typing `2x + 3 = 11` again) is solved fresh; lines with two answers (x = ±√2) don't set a value.
+- **Calculator-style lines**: a trailing `=` works (`5 * 6 =` → 30), in both modes.
+- **Ans** puts the last answer into the input; tapping any answer does the same for that line.
+  ✕ deletes a line; *Clear notebook* asks before deleting everything. Errors show in red on their own line.
+- Engine: `Solver.solve(Input)` entry point and `engine/Notebook.kt` (value tracking and substitution).
+  Symja is still not used: the pure-Kotlin engine checks its own answers numerically instead.
+
+### New in 0.5.0 (engineering)
+
+- **Tap-to-edit math input** (MathLive, bundled offline in `assets/editor`, MIT licence). Fractions, roots, powers,
+  limits and sums appear as real math with boxes to fill in; tap anywhere in the problem to move the cursor.
+  `÷` makes a fraction; hold `∫` for a definite integral. The old plain-text input is still there (⋮ menu).
+  The editor's LaTeX is turned back into LocalMath's text syntax by `engine/LatexInput.kt`.
+- **Eng keyboard page** — SI prefixes k, M, G, m, µ, n, p; `∥` for parallel (`10k ∥ 4.7k` = R₁R₂/(R₁+R₂));
+  `×10ⁿ`, `10ˣ`, and `dB` (20·log₁₀).
+- **Engineering answers** (⋮ menu) — results also shown with prefixes, e.g. 0.002553 → 2.553 m.
+- **Formula library** (Formulas button) — 70 common formulas for DC circuits, AC and electronics, digital/IoT,
+  mechanics, materials, thermal/fluids and maths. Search, ★ favourites, pick the unknown, fill in the rest
+  (prefixes work: 4.7k, 100n). Steps show the formula rearranged, the numbers substituted and the result
+  with units in engineering notation. Formulas where the unknown appears twice are solved as equations; every
+  answer is checked by putting it back into the formula.
+- Letters now keep their case, so `R` and `r` are different variables (function names still work in any case).
+- Exact `log` of powers of ten (log 1000 = 3).
+
 ### New in 0.4.0 (Calculus 2)
 
 - **Limits** — `lim(sin x / x, 0)`, `lim(f, x → 2)`, one-sided `lim(1/x, 0+)` / `lim(1/x, 0−)`, and `lim(f, ∞)` / `lim(f, −∞)`.

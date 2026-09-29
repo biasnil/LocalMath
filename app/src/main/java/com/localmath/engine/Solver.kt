@@ -5,7 +5,9 @@ package com.localmath.engine
  */
 object Solver {
 
-    fun solve(source: String): Solution = when (val input = Parser.parse(source)) {
+    fun solve(source: String): Solution = solve(Parser.parse(source))
+
+    fun solve(input: Input): Solution = when (input) {
         is Input.System -> system(input.equations)
         is Input.Inequality -> {
             if (input.left.has { it is Expr.Special } || input.right.has { it is Expr.Special })

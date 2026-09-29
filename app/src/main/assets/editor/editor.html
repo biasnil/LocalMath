@@ -1,0 +1,90 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<link rel="stylesheet" href="mathlive-fonts.css">
+<style>
+  :root { --fg: #111; --accent: #3355AA; --muted: #888; --sel: rgba(51, 85, 170, 0.25); }
+  /* Don't depend on the page height: Android can report 0 while the view is still being laid out. */
+  html, body { margin: 0; padding: 0; background: transparent; overflow: hidden; }
+  body { padding-top: 10px; position: relative; }
+  math-field {
+    display: block; width: 100%; box-sizing: border-box;
+    font-size: 26px; padding: 6px 14px; border: none; outline: none;
+    background: transparent; color: var(--fg);
+    --caret-color: var(--accent);
+    --selection-background-color: var(--sel);
+    --selection-color: var(--fg);
+    --placeholder-color: var(--muted);
+    --contains-highlight-background-color: transparent;
+  }
+  math-field::part(virtual-keyboard-toggle), math-field::part(menu-toggle) { display: none; }
+  math-field:focus, math-field:focus-within { outline: none; }
+  #hint { position: absolute; left: 18px; top: 24px; color: var(--muted); font: 18px sans-serif; pointer-events: none; }
+</style>
+</head>
+<body>
+<div id="hint">Type a problem with the keys below</div>
+<math-field id="mf"></math-field>
+<script>
+  // Tell the app about any problem, so it can fall back to plain-text input instead of silently doing nothing.
+  function report(msg) { try { Android.error(String(msg)); } catch (e) {} }
+  window.onerror = function (msg, src, line) { report(msg + (line ? ' (line ' + line + ')' : '')); };
+</script>
+<script src="mathlive.min.js"></script>
+<script>
+  // LM is defined first, so the app can always call it; each method checks MathLive is really there.
+  let mf = null;
+  const hint = document.getElementById('hint');
+
+  function notify() {
+    if (!mf) return;
+    const v = mf.getValue('latex');
+    hint.style.display = v.length ? 'none' : 'block';
+    try { Android.changed(v); } catch (e) {}
+  }
+
+  window.LM = {
+    insert(latex) {
+      if (!mf) return;
+      mf.focus();
+      mf.executeCommand(['insert', latex, { focus: true, feedback: false, format: 'latex', selectionMode: 'placeholder' }]);
+      notify();
+    },
+    cmd(name) { if (!mf) return; mf.focus(); mf.executeCommand(name); notify(); },
+    set(latex) {
+      if (!mf) return;
+      mf.value = latex;
+      mf.focus();
+      mf.executeCommand('moveToMathfieldEnd');
+      notify();
+    },
+    theme(fg, accent, muted, sel) {
+      const r = document.documentElement.style;
+      r.setProperty('--fg', fg); r.setProperty('--accent', accent);
+      r.setProperty('--muted', muted); r.setProperty('--sel', sel);
+    }
+  };
+
+  try {
+    if (typeof MathfieldElement === 'undefined') throw new Error('MathLive did not load');
+    // Everything is offline: fonts come from the CSS above; no sounds.
+    try { MathfieldElement.fontsDirectory = null; } catch (e) {}
+    try { MathfieldElement.soundsDirectory = null; } catch (e) {}
+    mf = document.getElementById('mf');
+    try { mf.mathVirtualKeyboardPolicy = 'manual'; } catch (e) {}
+    try { mf.menuItems = []; } catch (e) {}
+    try { mf.inlineShortcuts = {}; } catch (e) {}
+    mf.addEventListener('input', notify);
+    mf.addEventListener('focusin', () => { try { window.mathVirtualKeyboard.hide(); } catch (e) {} });
+    if (typeof mf.executeCommand !== 'function') throw new Error('math-field did not start');
+    try { Android.ready(); } catch (e) {}
+    setTimeout(() => { mf.focus(); notify(); }, 50);
+  } catch (e) {
+    mf = null;
+    report(e && e.message ? e.message : e);
+  }
+</script>
+</body>
+</html>

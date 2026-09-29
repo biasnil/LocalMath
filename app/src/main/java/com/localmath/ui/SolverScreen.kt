@@ -1,10 +1,24 @@
 package com.localmath.ui
 
-import androidx.compose.foundation.horizontalScroll
+import android.widget.Toast
+import androidx.compose.runtime.DisposableEffect
+import androidx.core.content.edit
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.FilterChip
+import androidx.compose.runtime.Composable
+import com.localmath.data.NotebookEntry
+import com.localmath.engine.Notebook
+import androidx.compose.foundation.layout.height
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
+import com.localmath.engine.LatexInput
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
@@ -23,7 +37,6 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
-import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -51,6 +64,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
 private val EXAMPLES = listOf(
+    "10000 ∥ 4700",
     "2x + 3 = 7",
     "x² − 5x + 6 = 0",
     "x³ − 6x² + 11x − 6 = 0",
@@ -81,12 +95,42 @@ fun SolverScreen() {
     val history by historyFlow.collectAsState(initial = emptyList())
     val scope = rememberCoroutineScope()
 
+    val prefs = remember { context.getSharedPreferences("localmath", android.content.Context.MODE_PRIVATE) }
+    var visual by remember { mutableStateOf(prefs.getBoolean("visual_editor", true)) }   // tap-to-edit input
+    var eng by remember { mutableStateOf(prefs.getBoolean("eng_answers", false)) }       // engineering notation
+    var menuOpen by remember { mutableStateOf(false) }
+    var notebookMode by remember { mutableStateOf(prefs.getBoolean("notebook_mode", false)) }
+    var confirmClear by remember { mutableStateOf(false) }
+    val notebookDao = remember { AppDatabase.get(context).notebook() }
+    val notebookFlow = remember(notebookDao) { notebookDao.all() }
+    val notebook by notebookFlow.collectAsState(initial = emptyList())
+    var showFormulas by rememberSaveable { mutableStateOf(false) }
+    val editor = remember { EditorController() }
+    DisposableEffect(editor) { onDispose { editor.destroy() } }
+
     var input by rememberSaveable(stateSaver = InputState.Saver) { mutableStateOf(InputState()) }
     var solvedText by rememberSaveable { mutableStateOf<String?>(null) }   // survives rotation
     var result by remember { mutableStateOf<Result<Solution>?>(null) }
     var showHistory by rememberSaveable { mutableStateOf(false) }
 
-    LaunchedEffect(solvedText) {
+    var solveCount by remember { mutableIntStateOf(0) }   // lets the same problem be solved again
+
+    // If the tap-to-edit editor can't start on this device, fall back to plain-text input.
+    LaunchedEffect(editor.failure) {
+        val why = editor.failure ?: return@LaunchedEffect
+        if (visual) {
+            visual = false
+            prefs.edit { putBoolean("visual_editor", false) }
+            Toast.makeText(context, "Tap-to-edit input couldn't start ($why). Switched to text input.", Toast.LENGTH_LONG).show()
+        }
+    }
+
+    // After rotation the editor starts empty; put the problem back.
+    LaunchedEffect(Unit) {
+        if (visual && input.text.isNotBlank()) editor.set(runCatching { LatexInput.fromText(input.text) }.getOrDefault(""))
+    }
+
+    LaunchedEffect(solvedText, solveCount) {
         val text = solvedText ?: return@LaunchedEffect
         result = null
         val r = withContext(Dispatchers.Default) { runCatching { Solver.solve(text) } }
@@ -96,7 +140,76 @@ fun SolverScreen() {
 
     fun solve(text: String) {
         input = InputState.of(text)
+        if (visual) editor.set(runCatching { LatexInput.fromText(text) }.getOrDefault(""))
         solvedText = text
+    }
+
+    fun clearInput() {
+        input = InputState()
+        if (visual) editor.set("")
+    }
+
+    /** Notebook: work out the line (using earlier answers), save it, and clear the input. */
+    fun addToNotebook(text: String) {
+        val known = Notebook.known(notebook.map { it.answer })
+        scope.launch {
+            val entry = withContext(Dispatchers.Default) {
+                val now = System.currentTimeMillis()
+                try {
+                    val r = Notebook.evaluate(text, known)
+                    NotebookEntry(input = text, answer = r.solution.answer, approx = r.solution.approx, error = null, used = r.used, timestamp = now)
+                } catch (e: MathError) {
+                    NotebookEntry(input = text, answer = null, approx = null, error = e.message ?: "Error", used = null, timestamp = now)
+                } catch (e: Exception) {
+                    NotebookEntry(input = text, answer = null, approx = null, error = "Unexpected error: ${e.message}", used = null, timestamp = now)
+                }
+            }
+            notebookDao.insert(entry)
+        }
+        clearInput()
+    }
+
+    /** Puts an earlier answer into the input (the "Ans" button, or tapping an answer). */
+    fun insertAnswer(answer: String?) {
+        val value = Notebook.ansOf(answer)
+        if (value == null) {
+            Toast.makeText(context, "That answer isn't a single value", Toast.LENGTH_SHORT).show()
+            return
+        }
+        if (visual) editor.insert(value.second) else input = input.insert(value.first)
+    }
+
+    /** Solve what's in the editor: its LaTeX is converted to LocalMath text first. */
+    fun solveCurrent() {
+        if (notebookMode) {
+            val text = if (visual) {
+                if (editor.latex.isBlank()) return
+                try { LatexInput.toText(editor.latex) } catch (e: MathError) {
+                    Toast.makeText(context, e.message, Toast.LENGTH_SHORT).show(); return
+                }
+            } else input.text
+            if (text.isNotBlank()) addToNotebook(text)
+            return
+        }
+        if (!visual) {
+            if (input.text.isNotBlank()) solvedText = input.text
+            return
+        }
+        if (editor.latex.isBlank()) return
+        try {
+            val text = LatexInput.toText(editor.latex)
+            input = InputState.of(text)
+            solvedText = text
+            solveCount++
+        } catch (e: MathError) {
+            solvedText = null
+            result = Result.failure(e)
+        }
+    }
+
+    if (showFormulas) {
+        FormulaScreen(onBack = { showFormulas = false })
+        return
     }
 
     if (showHistory) {
@@ -111,13 +224,25 @@ fun SolverScreen() {
     }
 
     fun onKey(action: KeyAction) {
+        if (visual) {
+            when (action) {
+                is KeyAction.Insert -> editor.insert(action.latex ?: action.text)
+                KeyAction.Backspace -> editor.command("deleteBackward")
+                KeyAction.Clear -> { solvedText = null; result = null; editor.set("") }
+                KeyAction.Left -> editor.command("moveToPreviousChar")
+                KeyAction.Right -> editor.command("moveToNextChar")
+                KeyAction.Solve -> solveCurrent()
+                is KeyAction.GoToPage -> Unit
+            }
+            return
+        }
         when (action) {
             is KeyAction.Insert -> input = input.insert(action.text)
             KeyAction.Backspace -> input = input.backspace()
             KeyAction.Clear -> { solvedText = null; result = null; input = input.clear() }
             KeyAction.Left -> input = input.left()
             KeyAction.Right -> input = input.right()
-            KeyAction.Solve -> if (input.text.isNotBlank()) solvedText = input.text
+            KeyAction.Solve -> solveCurrent()
             is KeyAction.GoToPage -> Unit  // handled inside the keyboard
         }
     }
@@ -126,36 +251,117 @@ fun SolverScreen() {
         topBar = {
             CenterAlignedTopAppBar(
                 title = { Text("LocalMath") },
-                actions = { TextButton(onClick = { showHistory = true }) { Text("History") } }
+                actions = {
+                    TextButton(onClick = { showFormulas = true }) { Text("Formulas") }
+                    TextButton(onClick = { showHistory = true }) { Text("History") }
+                    Box {
+                        TextButton(onClick = { menuOpen = true }) { Text("⋮", fontSize = 20.sp) }
+                        DropdownMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false }) {
+                            DropdownMenuItem(
+                                text = { Text((if (visual) "✓ " else "    ") + "Tap-to-edit input") },
+                                onClick = {
+                                    // Carry the current problem across when switching modes.
+                                    if (visual) {
+                                        runCatching { LatexInput.toText(editor.latex) }.getOrNull()?.let { input = InputState.of(it) }
+                                    } else {
+                                        editor.set(runCatching { LatexInput.fromText(input.text) }.getOrDefault(""))
+                                    }
+                                    visual = !visual
+                                    prefs.edit { putBoolean("visual_editor", visual) }
+                                    menuOpen = false
+                                }
+                            )
+                            DropdownMenuItem(
+                                text = { Text((if (eng) "✓ " else "    ") + "Engineering answers (k, M, m, µ)") },
+                                onClick = {
+                                    eng = !eng
+                                    prefs.edit { putBoolean("eng_answers", eng) }
+                                    menuOpen = false
+                                }
+                            )
+                        }
+                    }
+                }
             )
         }
     ) { padding ->
         Column(Modifier.fillMaxSize().padding(padding)) {
-            InputDisplay(input, Modifier.fillMaxWidth().padding(horizontal = 12.dp))
+            // Normal = one problem with full steps; Notebook = running list of answers.
+            Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 2.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                FilterChip(selected = !notebookMode, label = { Text("Normal") }, onClick = {
+                    notebookMode = false; prefs.edit { putBoolean("notebook_mode", false) }
+                })
+                FilterChip(selected = notebookMode, label = { Text("Notebook") }, onClick = {
+                    notebookMode = true; prefs.edit { putBoolean("notebook_mode", true) }
+                })
+            }
 
-            Box(Modifier.weight(1f).fillMaxWidth().padding(top = 8.dp)) {
-                val r = result
-                when {
-                    r == null && solvedText != null -> Text(
-                        "Solving…", Modifier.align(Alignment.Center),
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                    r == null -> Examples(onPick = ::solve)
-                    else -> r.fold(
-                        onSuccess = { MathView(it, Modifier.fillMaxSize()) },
-                        onFailure = { e ->
-                            ErrorCard(
-                                if (e is MathError) e.message ?: "Error" else "Unexpected error: ${e.message}",
-                                Modifier.padding(12.dp)
-                            )
-                        }
-                    )
+            val inputArea: @Composable () -> Unit = {
+                if (visual) {
+                    Surface(
+                        modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp).height(96.dp),
+                        shape = RoundedCornerShape(16.dp),
+                        color = MaterialTheme.colorScheme.surfaceContainerHigh
+                    ) { MathEditor(editor, Modifier.fillMaxSize()) }
+                } else {
+                    InputDisplay(input, Modifier.fillMaxWidth().padding(horizontal = 12.dp))
+                }
+            }
+
+            if (notebookMode) {
+                NotebookView(
+                    entries = notebook, eng = eng,
+                    onPick = { id -> insertAnswer(notebook.firstOrNull { it.id == id }?.answer) },
+                    onRemove = { id -> scope.launch { notebookDao.delete(id) } },
+                    modifier = Modifier.weight(1f).fillMaxWidth()
+                )
+                Row(Modifier.fillMaxWidth().padding(horizontal = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+                    TextButton(
+                        onClick = { insertAnswer(notebook.lastOrNull { it.answer != null }?.answer) },
+                        enabled = notebook.any { it.answer != null }
+                    ) { Text("Ans") }
+                    Text("${notebook.size} line${if (notebook.size == 1) "" else "s"}", Modifier.weight(1f),
+                        color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 13.sp)
+                    TextButton(onClick = { confirmClear = true }, enabled = notebook.isNotEmpty()) { Text("Clear notebook") }
+                }
+                inputArea()
+                Spacer(Modifier.height(6.dp))
+            } else {
+                inputArea()
+                Box(Modifier.weight(1f).fillMaxWidth().padding(top = 8.dp)) {
+                    val r = result
+                    when {
+                        r == null && solvedText != null -> Text(
+                            "Solving…", Modifier.align(Alignment.Center),
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        r == null -> Examples(onPick = ::solve)
+                        else -> r.fold(
+                            onSuccess = { MathView(it, Modifier.fillMaxSize(), eng = eng) },
+                            onFailure = { e ->
+                                ErrorCard(
+                                    if (e is MathError) e.message ?: "Error" else "Unexpected error: ${e.message}",
+                                    Modifier.padding(12.dp)
+                                )
+                            }
+                        )
+                    }
                 }
             }
 
             HorizontalDivider()
-            MathKeyboard(onKey = ::onKey, modifier = Modifier.fillMaxWidth())
+            MathKeyboard(onKey = ::onKey, modifier = Modifier.fillMaxWidth(), solveLabel = if (notebookMode) "Add" else "Solve")
         }
+    }
+
+    if (confirmClear) {
+        AlertDialog(
+            onDismissRequest = { confirmClear = false },
+            title = { Text("Clear notebook?") },
+            text = { Text("This deletes every line in the notebook.") },
+            confirmButton = { TextButton(onClick = { confirmClear = false; scope.launch { notebookDao.clear() } }) { Text("Clear") } },
+            dismissButton = { TextButton(onClick = { confirmClear = false }) { Text("Cancel") } }
+        )
     }
 }
 
@@ -205,10 +411,8 @@ private fun Examples(onPick: (String) -> Unit) {
             EXAMPLES.forEach { ex -> AssistChip(onClick = { onPick(ex) }, label = { Text(ex) }) }
         }
         Text(
-            "Tips: f(x) opens functions, d/dx, ∫ and < > ≤ ≥. Definite integral: ∫(f, a, b). " +
-                "Σ lim opens limits, sums, sequences and y′. Limits: lim(f, a), lim(f, 0+), lim(f, ∞). " +
-                "Sums: Σ(f, 1, 10), Σ(f, 1, n), Σ(f, 1, ∞). Higher derivatives: d/dx(f, 2). " +
-                "Starting values go after ;, e.g. y′ = 2y; y(0) = 1. Hold ⌫ to clear.",
+            "Tap inside the problem to move the cursor. ÷ makes a fraction. " +
+                "Eng: k, M, µ, ∥ and dB. Σ lim: limits, sums and y′. Hold ⌫ to clear.",
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant
         )

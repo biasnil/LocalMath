@@ -102,8 +102,10 @@ object Parser {
     )
 
     fun parse(source: String): Input {
-        val tokens = tokenize(source)
+        var tokens = tokenize(source)
         if (tokens.isEmpty()) throw MathError("Type an equation or expression first")
+        // "5 * 6 =" means "work out 5 * 6", like a calculator.
+        while (tokens.size > 1 && tokens.last() == Token.Equals) tokens = tokens.dropLast(1)
 
         // Split on ';' (or new lines) for systems of equations.
         val parts = mutableListOf(mutableListOf<Token>())
@@ -165,7 +167,7 @@ object Parser {
                 c.isLetter() && c != 'Σ' -> {
                     val start = i
                     while (i < src.length && src[i].isLetter() && src[i] != 'π' && src[i] != 'Σ') i++
-                    splitWord(src.substring(start, i).lowercase(), out)
+                    splitWord(src.substring(start, i), out)
                 }
                 c == '√' -> { out += Token.Func("sqrt"); i++ }
                 c == '∫' -> { out += Token.Integral; i++ }
@@ -180,6 +182,7 @@ object Parser {
                 c == '*' || c == '×' || c == '·' -> { out += Token.Op('*'); i++ }
                 c == '/' || c == '÷' -> { out += Token.Op('/'); i++ }
                 c == '^' -> { out += Token.Op('^'); i++ }
+                c == '∥' || c == '‖' -> { out += Token.Op('∥'); i++ }
                 c == '²' -> { out += Token.Op('^'); out += Token.Num("2"); i++ }
                 c == '³' -> { out += Token.Op('^'); out += Token.Num("3"); i++ }
                 c == '(' || c == '[' -> { out += Token.LParen; i++ }
@@ -200,13 +203,15 @@ object Parser {
     }
 
     /** "xsinx" -> x, sin, x.  "pi" -> π.  "e" -> Euler's number. Other letters are variables. */
+    /** Function names are matched in any case (Sin = sin); single letters keep their case (R ≠ r). */
     private fun splitWord(word: String, out: MutableList<Token>) {
+        val lower = word.lowercase()
         var j = 0
         while (j < word.length) {
-            val name = FUNCTION_NAMES.firstOrNull { word.startsWith(it, j) }
+            val name = FUNCTION_NAMES.firstOrNull { lower.startsWith(it, j) && (it.length > 1) && !(word.substring(j, j + it.length).any { c -> c.isUpperCase() } && word.substring(j, j + it.length) != it.uppercase() && word[j].isLowerCase()) }
             when {
                 name != null -> { out += Token.Func(name); j += name.length }
-                word.startsWith("pi", j) -> { out += Token.Const('π'); j += 2 }
+                lower.startsWith("pi", j) && word.startsWith("pi", j) -> { out += Token.Const('π'); j += 2 }
                 word[j] == 'e' -> { out += Token.Const('e'); j++ }
                 else -> { out += Token.Var(word[j]); j++ }
             }
@@ -243,14 +248,27 @@ object Parser {
         }
 
         fun parseExpr(): Expr {
-            var e = parseTerm()
+            var e = parseParallel()
             while (true) {
                 val t = peek()
                 e = when {
-                    t is Token.Op && t.symbol == '+' -> { next(); Expr.Add(e, parseTerm()) }
-                    t is Token.Op && t.symbol == '-' -> { next(); Expr.Sub(e, parseTerm()) }
+                    t is Token.Op && t.symbol == '+' -> { next(); Expr.Add(e, parseParallel()) }
+                    t is Token.Op && t.symbol == '-' -> { next(); Expr.Sub(e, parseParallel()) }
                     else -> return e
                 }
+            }
+        }
+
+        /** a ∥ b = ab/(a + b) (resistors in parallel). Binds tighter than +, looser than ×. */
+        private fun parseParallel(): Expr {
+            var e = parseTerm()
+            while (true) {
+                val t = peek()
+                if (t is Token.Op && t.symbol == '∥') {
+                    next()
+                    val r = parseTerm()
+                    e = Expr.Div(Expr.Mul(e, r), Expr.Add(e, r))
+                } else return e
             }
         }
 

@@ -32,9 +32,9 @@ fun rememberMathColors(): MathColors {
  */
 @SuppressLint("SetJavaScriptEnabled")
 @Composable
-fun MathView(solution: Solution, modifier: Modifier = Modifier) {
+fun MathView(solution: Solution, modifier: Modifier = Modifier, eng: Boolean = false) {
     val colors = rememberMathColors()
-    val html = remember(solution, colors) { SolutionHtml.build(solution, colors) }
+    val html = remember(solution, colors, eng) { SolutionHtml.build(solution, colors, eng) }
     AndroidView(
         modifier = modifier,
         factory = { context ->

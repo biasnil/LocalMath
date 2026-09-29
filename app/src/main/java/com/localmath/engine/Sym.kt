@@ -173,6 +173,16 @@ object Sym {
             "log" -> {
                 if (arg == ONE) return ZERO
                 if (arg is S.Num && arg.v == Rational.of(10)) return ONE
+                // log 1000 = 3, log 0.01 = −2
+                if (arg is S.Num && arg.v.sign > 0) {
+                    var r = arg.v
+                    var k = 0L
+                    val ten = Rational.of(10)
+                    while (r.isInteger && r.num > java.math.BigInteger.ONE && r.num.mod(java.math.BigInteger.TEN).signum() == 0 && k < 400) { r = r / ten; k++ }
+                    while (!r.isInteger && r.num == java.math.BigInteger.ONE && r.den.mod(java.math.BigInteger.TEN).signum() == 0 && k > -400) { r = r * ten; k-- }
+                    if (r.isOne && k != 0L) return num(k)
+                }
+                if (arg is S.Pow && arg.base is S.Num && (arg.base as S.Num).v == Rational.of(10)) return arg.exp
             }
             "sin", "cos", "tan" -> exactTrig(name, arg)?.let { return it }
             "arcsin", "arccos", "arctan" -> exactInverseTrig(name, arg)?.let { return it }
