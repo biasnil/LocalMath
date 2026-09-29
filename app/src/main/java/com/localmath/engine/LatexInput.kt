@@ -28,7 +28,7 @@ object LatexInput {
     }
 
     private val FUNCS = setOf("sin", "cos", "tan", "arcsin", "arccos", "arctan", "sinh", "cosh", "tanh",
-        "arsinh", "arcosh", "artanh", "ln", "log", "exp", "sqrt", "abs", "lg")
+        "arsinh", "arcosh", "artanh", "ln", "log", "exp", "sqrt", "abs", "lg", "conj", "arg", "real", "imag")
 
     /** SI prefixes (inserted as \mathrm{k}) and constants (inserted as \mathbf{c}). */
     private val PREFIX = mapOf("T" to 12, "G" to 9, "M" to 6, "k" to 3, "m" to -3, "\\mu" to -6, "µ" to -6, "μ" to -6, "u" to -6, "n" to -9, "p" to -12)
@@ -218,7 +218,8 @@ object LatexInput {
                 "ne", "neq" -> throw MathError("≠ isn't supported; use = or an inequality")
                 "exponentialE" -> atom(items, "e")
                 "differentialD", "partial" -> atom(items, "d")
-                "imaginaryI" -> throw MathError("Complex numbers aren't supported yet")
+                "imaginaryI" -> atom(items, "i")
+                "overline", "bar" -> atom(items, "conj(${arg()})")
                 "prime" -> appendToLast(items, "'")
                 "doubleprime" -> appendToLast(items, "''")
                 "parallel", "Vert", "|" -> atom(items, "∥")
@@ -290,6 +291,8 @@ object LatexInput {
             val raw = rawGroup().replace(" ", "")
             if (cmd.startsWith("operatorname")) {
                 if (raw in FUNCS) { atom(items, raw); return }
+                if (raw == "Re") { atom(items, "real"); return }
+                if (raw == "Im") { atom(items, "imag"); return }
                 throw MathError("Unknown function $raw")
             }
             PREFIX[raw]?.let { atom(items, "(10^($it))"); return }
@@ -384,12 +387,14 @@ object LatexInput {
         is Input.Expression -> Tex.expr(input.expr)
         is Input.Equation -> Tex.equation(input.left, input.right)
         is Input.System -> input.equations.joinToString(";\\;") { Tex.equation(it.left, it.right) }
-        is Input.Inequality -> Tex.expr(input.left) + " " + relTex(input) + " " + Tex.expr(input.right)
+        is Input.Inequality -> Tex.expr(input.left) + " " + relTex(input.op) + " " + Tex.expr(input.right)
+        is Input.Between -> Tex.expr(input.left) + " " + relTex(input.op1) + " " + Tex.expr(input.middle) + " " +
+            relTex(input.op2) + " " + Tex.expr(input.right)
     }
 
-    private fun relTex(i: Input.Inequality): String = when (i.op) {
+    private fun relTex(op: String): String = when (op) {
         "≤", "<=" -> "\\le"
         "≥", ">=" -> "\\ge"
-        else -> i.op
+        else -> op
     }
 }

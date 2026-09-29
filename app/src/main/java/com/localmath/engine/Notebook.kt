@@ -92,6 +92,11 @@ object Notebook {
                 val use = pick(known, vars, null)
                 Input.Inequality(fill(input.left, use), input.op, fill(input.right, use)) to use
             }
+            is Input.Between -> {
+                val vars = input.left.variables() + input.middle.variables() + input.right.variables()
+                val use = pick(known, vars, null)
+                Input.Between(fill(input.left, use), input.op1, fill(input.middle, use), input.op2, fill(input.right, use)) to use
+            }
         }
         val solution = Solver.solve(sub)
         val note = if (used.isEmpty()) null else used.entries.joinToString(",\\; ") { (k, v) -> "$k = ${Tex.expr(v)}" }

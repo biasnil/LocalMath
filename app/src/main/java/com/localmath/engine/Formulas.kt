@@ -17,6 +17,7 @@ data class FVar(
     /** Plain-text name for labels, e.g. V_out, ω. */
     val label: String get() = tex.replace("\\omega", "ω").replace("\\tau", "τ").replace("\\rho", "ρ").replace("\\sigma", "σ")
         .replace("\\varepsilon", "ε").replace("\\lambda", "λ").replace("\\eta", "η").replace("\\Delta ", "Δ").replace("\\Delta", "Δ")
+        .replace("\\Pi", "Π").replace("\\pi", "π").replace("\\beta", "β").replace("\\%", "%")
         .replace("\\text", "").replace("{", "").replace("}", "")
 }
 
@@ -32,9 +33,25 @@ data class Formula(
 
 private fun v(letter: Char, tex: String, meaning: String, unit: String = "", default: String? = null) = FVar(letter, tex, meaning, unit, default)
 
+/** Unit for amounts of money: shown with two decimals and no currency sign, so any currency works. */
+const val MONEY = "money"
+
 object Formulas {
 
-    val CATEGORIES = listOf("DC circuits", "AC & electronics", "Digital & IoT", "Mechanics", "Materials", "Thermal & fluids", "Maths")
+    const val ENGINEERING = "Engineering"
+    const val FINANCE = "Finance & economics"
+
+    /** The Formulas screen has one tab per group; each group lists its categories in this order. */
+    val GROUPS: Map<String, List<String>> = linkedMapOf(
+        ENGINEERING to listOf("DC circuits", "AC & electronics", "Digital & IoT", "Mechanics", "Materials", "Thermal & fluids", "Maths"),
+        FINANCE to listOf("Interest & growth", "Loans & annuities", "Investing", "Accounting", "Business & pricing", "Economics")
+    )
+
+    val CATEGORIES = GROUPS.values.flatten()
+
+    fun groupOf(f: Formula): String = GROUPS.entries.first { f.category in it.value }.key
+
+    private fun isFinance(f: Formula) = groupOf(f) == FINANCE
 
     val ALL: List<Formula> = listOf(
         // ---------------- DC circuits ----------------
@@ -201,7 +218,172 @@ object Formulas {
         Formula("triangle", "Maths", "Area of a triangle", "A = ½·b·h", "A = b h/2",
             listOf(v('A', "A", "area", "m²"), v('b', "b", "base", "m"), v('h', "h", "height", "m"))),
         Formula("pct", "Maths", "Percentage change", "Δ% = (new − old)/old × 100", "p = 100 (n - o)/o",
-            listOf(v('p', "\\Delta\\%", "percentage change", "%"), v('n', "\\text{new}", "new value"), v('o', "\\text{old}", "old value")))
+            listOf(v('p', "\\Delta\\%", "percentage change", "%"), v('n', "\\text{new}", "new value"), v('o', "\\text{old}", "old value"))),
+
+        // ================= Finance & economics =================
+        // Rates are typed in percent (5 means 5%), so the equations divide by 100.
+
+        // ---------------- Interest & growth ----------------
+        Formula("simple_int", "Interest & growth", "Simple interest", "I = P·r·t", "I = P r t/100",
+            listOf(v('I', "I", "interest earned", MONEY), v('P', "P", "principal (starting amount)", MONEY),
+                v('r', "r", "interest rate per year", "%"), v('t', "t", "time", "years"))),
+        Formula("simple_amt", "Interest & growth", "Simple interest: final amount", "A = P(1 + r·t)", "A = P (1 + r t/100)",
+            listOf(v('A', "A", "final amount", MONEY), v('P', "P", "principal", MONEY),
+                v('r', "r", "interest rate per year", "%"), v('t', "t", "time", "years"))),
+        Formula("compound", "Interest & growth", "Compound interest", "A = P(1 + r/n)^(n·t)", "A = P (1 + r/(100 n))^(n t)",
+            listOf(v('A', "A", "final amount", MONEY), v('P', "P", "principal", MONEY), v('r', "r", "interest rate per year", "%"),
+                v('n', "n", "times compounded per year", "", "12"), v('t', "t", "time", "years")),
+            "n = 1 yearly, 4 quarterly, 12 monthly, 365 daily."),
+        Formula("continuous", "Interest & growth", "Continuous compounding", "A = P·e^(r·t)", "A = P e^(r t/100)",
+            listOf(v('A', "A", "final amount", MONEY), v('P', "P", "principal", MONEY),
+                v('r', "r", "interest rate per year", "%"), v('t', "t", "time", "years"))),
+        Formula("ear", "Interest & growth", "Effective annual rate (EAR / APY)", "EAR = (1 + r/n)ⁿ − 1", "E = 100 ((1 + r/(100 n))^n - 1)",
+            listOf(v('E', "\\text{EAR}", "effective annual rate", "%"), v('r', "r", "nominal (quoted) rate per year", "%"),
+                v('n', "n", "times compounded per year", "", "12"))),
+        Formula("pv", "Interest & growth", "Present value", "PV = FV/(1 + r)^t", "P = F/(1 + r/100)^t",
+            listOf(v('P', "PV", "present value", MONEY), v('F', "FV", "future value", MONEY),
+                v('r', "r", "discount rate per period", "%"), v('t', "t", "number of periods"))),
+        Formula("cagr", "Interest & growth", "Compound annual growth rate (CAGR)", "CAGR = (end/start)^(1/t) − 1", "g = 100 ((E/B)^(1/t) - 1)",
+            listOf(v('g', "\\text{CAGR}", "growth rate per year", "%"), v('E', "V_{end}", "ending value", MONEY),
+                v('B', "V_{start}", "starting value", MONEY), v('t', "t", "time", "years"))),
+        Formula("doubling", "Interest & growth", "Doubling time", "t = ln 2/ln(1 + r)", "t = ln(2)/ln(1 + r/100)",
+            listOf(v('t', "t", "time to double", "years"), v('r', "r", "growth rate per year", "%"))),
+        Formula("rule72", "Interest & growth", "Rule of 72 (quick estimate)", "t ≈ 72/r", "t = 72/r",
+            listOf(v('t', "t", "time to double (approx.)", "years"), v('r', "r", "growth rate per year", "%")),
+            "A mental shortcut; use Doubling time for the exact answer."),
+        Formula("fisher", "Interest & growth", "Real interest rate (Fisher equation)", "1 + nominal = (1 + real)(1 + inflation)",
+            "1 + n/100 = (1 + r/100) (1 + f/100)",
+            listOf(v('n', "i_{nom}", "nominal interest rate", "%"), v('r', "r_{real}", "real interest rate", "%"),
+                v('f', "\\pi", "inflation rate", "%"))),
+
+        // ---------------- Loans & annuities ----------------
+        Formula("loan_pmt", "Loans & annuities", "Loan / mortgage monthly payment", "M = P·i/(1 − (1 + i)^(−N)), i = r/12",
+            "M = P (r/1200)/(1 - (1 + r/1200)^(-N))",
+            listOf(v('M', "M", "monthly payment", MONEY), v('P', "P", "amount borrowed", MONEY),
+                v('r', "r", "interest rate per year", "%"), v('N', "N", "number of monthly payments", "months")),
+            "A 30-year mortgage has N = 360."),
+        Formula("loan_int", "Loans & annuities", "Total interest on a loan", "I = M·N − P", "I = M N - P",
+            listOf(v('I', "I", "total interest paid", MONEY), v('M', "M", "payment each period", MONEY),
+                v('N', "N", "number of payments"), v('P', "P", "amount borrowed", MONEY))),
+        Formula("loan_bal", "Loans & annuities", "Loan balance after k payments", "B = P(1 + i)^k − M((1 + i)^k − 1)/i, i = r/12",
+            "B = P (1 + r/1200)^k - M ((1 + r/1200)^k - 1)/(r/1200)",
+            listOf(v('B', "B", "balance still owed", MONEY), v('P', "P", "amount borrowed", MONEY), v('r', "r", "interest rate per year", "%"),
+                v('M', "M", "monthly payment", MONEY), v('k', "k", "payments made so far", "months"))),
+        Formula("fv_annuity", "Loans & annuities", "Future value of regular savings", "FV = PMT·((1 + i)^N − 1)/i",
+            "F = M ((1 + r/100)^N - 1)/(r/100)",
+            listOf(v('F', "FV", "future value", MONEY), v('M', "PMT", "payment each period", MONEY),
+                v('r', "i", "interest rate per period", "%"), v('N', "N", "number of payments")),
+            "Payments at the end of each period (ordinary annuity)."),
+        Formula("pv_annuity", "Loans & annuities", "Present value of an annuity", "PV = PMT·(1 − (1 + i)^(−N))/i",
+            "P = M (1 - (1 + r/100)^(-N))/(r/100)",
+            listOf(v('P', "PV", "present value", MONEY), v('M', "PMT", "payment each period", MONEY),
+                v('r', "i", "interest rate per period", "%"), v('N', "N", "number of payments"))),
+        Formula("perpetuity", "Loans & annuities", "Perpetuity", "PV = PMT/i", "P = M/(r/100)",
+            listOf(v('P', "PV", "present value", MONEY), v('M', "PMT", "payment each period (forever)", MONEY),
+                v('r', "i", "interest rate per period", "%"))),
+
+        // ---------------- Investing ----------------
+        Formula("roi", "Investing", "Return on investment (ROI)", "ROI = (gain − cost)/cost × 100", "R = 100 (G - C)/C",
+            listOf(v('R', "\\text{ROI}", "return on investment", "%"), v('G', "G", "final value", MONEY), v('C', "C", "cost", MONEY))),
+        Formula("hpr", "Investing", "Holding period return", "HPR = (end − start + income)/start × 100", "H = 100 (E - B + D)/B",
+            listOf(v('H', "\\text{HPR}", "total return", "%"), v('E', "V_{end}", "ending value", MONEY),
+                v('B', "V_{start}", "starting value", MONEY), v('D', "D", "dividends / income received", MONEY, "0"))),
+        Formula("div_yield", "Investing", "Dividend yield", "yield = dividend/price × 100", "y = 100 D/P",
+            listOf(v('y', "y", "dividend yield", "%"), v('D', "D", "annual dividend per share", MONEY), v('P', "P", "share price", MONEY))),
+        Formula("eps", "Investing", "Earnings per share (EPS)", "EPS = (net income − preferred dividends)/shares", "E = (N - D)/S",
+            listOf(v('E', "\\text{EPS}", "earnings per share", MONEY), v('N', "N", "net income", MONEY),
+                v('D', "D", "preferred dividends", MONEY, "0"), v('S', "S", "shares outstanding"))),
+        Formula("pe", "Investing", "Price-to-earnings (P/E) ratio", "P/E = price/EPS", "R = P/E",
+            listOf(v('R', "P/E", "price-to-earnings ratio"), v('P', "P", "share price", MONEY), v('E', "\\text{EPS}", "earnings per share", MONEY))),
+        Formula("gordon", "Investing", "Dividend discount model (Gordon growth)", "P = D₁/(k − g)", "P = D/((k - g)/100)",
+            listOf(v('P', "P", "fair share price", MONEY), v('D', "D_1", "next year's dividend", MONEY),
+                v('k', "k", "required return", "%"), v('g', "g", "dividend growth rate", "%")),
+            "Only makes sense when k is bigger than g."),
+        Formula("capm", "Investing", "CAPM expected return", "E(R) = R_f + β(R_m − R_f)", "E = f + b (m - f)",
+            listOf(v('E', "E(R)", "expected return", "%"), v('f', "R_f", "risk-free rate", "%"),
+                v('b', "\\beta", "beta"), v('m', "R_m", "market return", "%"))),
+
+        // ---------------- Accounting ----------------
+        Formula("acct_eq", "Accounting", "Accounting equation", "Assets = Liabilities + Equity", "A = L + Q",
+            listOf(v('A', "A", "assets", MONEY), v('L', "L", "liabilities", MONEY), v('Q', "E", "owner's equity", MONEY))),
+        Formula("gross_margin", "Accounting", "Gross profit margin", "GM = (revenue − COGS)/revenue × 100", "m = 100 (R - C)/R",
+            listOf(v('m', "\\text{GM}", "gross margin", "%"), v('R', "R", "revenue (sales)", MONEY), v('C', "\\text{COGS}", "cost of goods sold", MONEY))),
+        Formula("net_margin", "Accounting", "Net profit margin", "NM = net income/revenue × 100", "m = 100 N/R",
+            listOf(v('m', "\\text{NM}", "net margin", "%"), v('N', "N", "net income", MONEY), v('R', "R", "revenue", MONEY))),
+        Formula("sl_dep", "Accounting", "Straight-line depreciation", "D = (cost − salvage)/life", "D = (C - S)/L",
+            listOf(v('D', "D", "depreciation per year", MONEY), v('C', "C", "cost of the asset", MONEY),
+                v('S', "S", "salvage (residual) value", MONEY, "0"), v('L', "L", "useful life", "years"))),
+        Formula("db_dep", "Accounting", "Declining-balance book value", "BV = cost × (1 − d)^t", "B = C (1 - d/100)^t",
+            listOf(v('B', "BV", "book value", MONEY), v('C', "C", "original cost", MONEY),
+                v('d', "d", "depreciation rate per year", "%"), v('t', "t", "age", "years"))),
+        Formula("current_ratio", "Accounting", "Current ratio", "CR = current assets/current liabilities", "R = A/L",
+            listOf(v('R', "\\text{CR}", "current ratio"), v('A', "A", "current assets", MONEY), v('L', "L", "current liabilities", MONEY))),
+        Formula("quick_ratio", "Accounting", "Quick (acid-test) ratio", "QR = (current assets − inventory)/current liabilities", "R = (A - I)/L",
+            listOf(v('R', "\\text{QR}", "quick ratio"), v('A', "A", "current assets", MONEY), v('I', "I", "inventory", MONEY),
+                v('L', "L", "current liabilities", MONEY))),
+        Formula("de_ratio", "Accounting", "Debt-to-equity ratio", "D/E = total liabilities/equity", "R = L/Q",
+            listOf(v('R', "D/E", "debt-to-equity ratio"), v('L', "L", "total liabilities", MONEY), v('Q', "E", "shareholders' equity", MONEY))),
+        Formula("roa", "Accounting", "Return on assets (ROA)", "ROA = net income/total assets × 100", "R = 100 N/A",
+            listOf(v('R', "\\text{ROA}", "return on assets", "%"), v('N', "N", "net income", MONEY), v('A', "A", "total assets", MONEY))),
+        Formula("roe", "Accounting", "Return on equity (ROE)", "ROE = net income/equity × 100", "R = 100 N/Q",
+            listOf(v('R', "\\text{ROE}", "return on equity", "%"), v('N', "N", "net income", MONEY), v('Q', "E", "shareholders' equity", MONEY))),
+        Formula("inv_turn", "Accounting", "Inventory turnover", "turnover = COGS/average inventory", "T = C/I",
+            listOf(v('T', "T", "inventory turnover (times per year)"), v('C', "\\text{COGS}", "cost of goods sold", MONEY),
+                v('I', "I", "average inventory", MONEY))),
+        Formula("dso", "Accounting", "Days sales outstanding (DSO)", "DSO = receivables/credit sales × 365", "D = 365 A/S",
+            listOf(v('D', "\\text{DSO}", "average days to get paid", "days"), v('A', "AR", "accounts receivable", MONEY),
+                v('S', "S", "credit sales for the year", MONEY))),
+
+        // ---------------- Business & pricing ----------------
+        Formula("revenue", "Business & pricing", "Total revenue", "R = P·Q", "R = P Q",
+            listOf(v('R', "R", "revenue", MONEY), v('P', "P", "price per unit", MONEY), v('Q', "Q", "units sold"))),
+        Formula("total_cost", "Business & pricing", "Total cost", "TC = FC + VC·Q", "T = F + V Q",
+            listOf(v('T', "TC", "total cost", MONEY), v('F', "FC", "fixed costs", MONEY), v('V', "VC", "variable cost per unit", MONEY),
+                v('Q', "Q", "units made"))),
+        Formula("profit", "Business & pricing", "Profit", "profit = revenue − cost", "p = R - C",
+            listOf(v('p', "\\Pi", "profit", MONEY), v('R', "R", "revenue", MONEY), v('C', "C", "total cost", MONEY))),
+        Formula("breakeven", "Business & pricing", "Break-even point", "Q = FC/(price − VC)", "Q = F/(P - V)",
+            listOf(v('Q', "Q", "units to break even"), v('F', "FC", "fixed costs", MONEY),
+                v('P', "P", "price per unit", MONEY), v('V', "VC", "variable cost per unit", MONEY))),
+        Formula("cm_ratio", "Business & pricing", "Contribution margin ratio", "CM = (price − VC)/price × 100", "c = 100 (P - V)/P",
+            listOf(v('c', "\\text{CM}", "contribution margin ratio", "%"), v('P', "P", "price per unit", MONEY),
+                v('V', "VC", "variable cost per unit", MONEY))),
+        Formula("markup", "Business & pricing", "Markup on cost", "markup = (price − cost)/cost × 100", "m = 100 (P - C)/C",
+            listOf(v('m', "m", "markup", "%"), v('P', "P", "selling price", MONEY), v('C', "C", "cost", MONEY))),
+        Formula("discount", "Business & pricing", "Price after a discount", "S = P × (1 − d)", "S = P (1 - d/100)",
+            listOf(v('S', "S", "sale price", MONEY), v('P', "P", "original price", MONEY), v('d', "d", "discount", "%"))),
+        Formula("tax", "Business & pricing", "Price including tax (VAT / GST / sales tax)", "T = P × (1 + t)", "T = P (1 + r/100)",
+            listOf(v('T', "T", "price with tax", MONEY), v('P', "P", "price before tax", MONEY), v('r', "t", "tax rate", "%"))),
+
+        // ---------------- Economics ----------------
+        Formula("elast_mid", "Economics", "Price elasticity of demand (midpoint)", "E = (ΔQ/avg Q)/(ΔP/avg P)",
+            "E = ((b - a)/(a + b))/((d - c)/(c + d))",
+            listOf(v('E', "E_d", "price elasticity"), v('a', "Q_1", "old quantity"), v('b', "Q_2", "new quantity"),
+                v('c', "P_1", "old price", MONEY), v('d', "P_2", "new price", MONEY)),
+            "|E| > 1 is elastic, |E| < 1 is inelastic. Demand elasticity is usually negative."),
+        Formula("elast", "Economics", "Elasticity from % changes", "E = %ΔQ/%ΔP", "E = q/p",
+            listOf(v('E', "E", "elasticity"), v('q', "\\%\\Delta Q", "percentage change in quantity", "%"),
+                v('p', "\\%\\Delta P", "percentage change in price", "%"))),
+        Formula("gdp", "Economics", "GDP (expenditure approach)", "Y = C + I + G + (X − M)", "Y = C + I + G + X - M",
+            listOf(v('Y', "Y", "GDP", MONEY), v('C', "C", "consumption", MONEY), v('I', "I", "investment", MONEY),
+                v('G', "G", "government spending", MONEY), v('X', "X", "exports", MONEY), v('M', "M", "imports", MONEY))),
+        Formula("real_gdp", "Economics", "Real GDP", "real GDP = nominal GDP/deflator × 100", "R = 100 N/D",
+            listOf(v('R', "\\text{real}", "real GDP", MONEY), v('N', "\\text{nominal}", "nominal GDP", MONEY),
+                v('D', "D", "GDP deflator (base year = 100)", "", "100"))),
+        Formula("inflation", "Economics", "Inflation rate (from a price index)", "π = (CPI₂ − CPI₁)/CPI₁ × 100", "f = 100 (b - a)/a",
+            listOf(v('f', "\\pi", "inflation rate", "%"), v('b', "\\text{CPI}_2", "price index now"), v('a', "\\text{CPI}_1", "price index before"))),
+        Formula("unemployment", "Economics", "Unemployment rate", "u = unemployed/labour force × 100", "u = 100 U/L",
+            listOf(v('u', "u", "unemployment rate", "%"), v('U', "U", "people unemployed"), v('L', "L", "labour force"))),
+        Formula("multiplier", "Economics", "Spending multiplier", "k = 1/(1 − MPC)", "k = 1/(1 - c)",
+            listOf(v('k', "k", "multiplier"), v('c', "\\text{MPC}", "marginal propensity to consume (0 to 1)"))),
+        Formula("money_mult", "Economics", "Money multiplier", "m = 1/reserve ratio", "m = 100/r",
+            listOf(v('m', "m", "money multiplier"), v('r', "r", "reserve requirement", "%"))),
+        Formula("qtm", "Economics", "Quantity theory of money", "M·V = P·Y", "M V = P Y",
+            listOf(v('M', "M", "money supply", MONEY), v('V', "V", "velocity of money"), v('P', "P", "price level"),
+                v('Y', "Y", "real output"))),
+        Formula("real_value", "Economics", "Value in today's money", "real = nominal/(1 + π)^t", "R = N/(1 + f/100)^t",
+            listOf(v('R', "R", "value in today's money", MONEY), v('N', "N", "future amount", MONEY),
+                v('f', "\\pi", "inflation rate per year", "%"), v('t', "t", "time", "years")))
     )
 
     fun byId(id: String) = ALL.firstOrNull { it.id == id }
@@ -220,7 +402,7 @@ object Formulas {
     private fun priv(i: Int) = '\uE000' + i
 
     private fun parts(f: Formula): Pair<Expr, Expr> {
-        val eq = Parser.parse(f.equation) as? Input.Equation ?: throw MathError("Bad formula ${f.id}")
+        val eq = Parser.parse(f.equation, imaginaryUnit = false) as? Input.Equation ?: throw MathError("Bad formula ${f.id}")
         fun map(e: Expr) = e.mapNodes { n ->
             if (n is Expr.Var) {
                 val i = f.vars.indexOfFirst { it.letter == n.name }
@@ -273,11 +455,12 @@ object Formulas {
         steps += Step("Formula: ${f.name}", named(f, Tex.equation(le, re)),
             f.vars.joinToString(", ") { "\\(${it.tex}\\) = ${it.meaning}" + if (it.unit.isNotEmpty()) " (${it.unit})" else "" })
         steps += Step("Known values", f.vars.withIndex().filter { it.index != ui }.joinToString(",\\quad ") { (i, fv) ->
-            "${fv.tex} = ${Eng.format(Sym.eval(values.getValue(priv(i)), emptyMap()), fv.unit)}"
+            "${fv.tex} = ${number(f, Sym.eval(values.getValue(priv(i)), emptyMap()), fv.unit)}"
         })
 
         val count = occurrences(left, u) + occurrences(right, u)
         val results: List<S>
+        var numeric = false
         val notes = mutableListOf<String>()
         val iso = if (count == 1) {
             if (depends(left, u)) isolate(left, right, u, notes) else isolate(right, left, u, notes)
@@ -285,7 +468,7 @@ object Formulas {
 
         if (iso != null) {
             steps += Step("Rearrange for \\(${target.tex}\\)", named(f, "$u = ${Sym.latex(iso)}"), notes.firstOrNull())
-            steps += Step("Substitute the values", named(f, "$u = ") + substituteTex(Sym.latex(iso), values))
+            steps += Step("Substitute the values", named(f, "$u = ") + substituteTex(Sym.latex(iso), values) { number(f, it, "") })
             val r = substitute(iso, values)
             results = listOf(r)
         } else {
@@ -309,6 +492,7 @@ object Formulas {
                 steps += Step("Solve numerically", named(f, "${Sym.latex(g)} = 0"),
                     "LocalMath can't rearrange this exactly, so it searches for the value that makes both sides equal.")
                 found += numericRoots(g, u).map { numberS(it) }
+                numeric = true
             }
             results = found
         }
@@ -332,16 +516,22 @@ object Formulas {
         val shown = chosen.map { r ->
             val d = Sym.eval(r, emptyMap())
             val exact = Sym.latex(r)
-            val eng = Eng.format(d, target.unit)
+            val eng = number(f, d, target.unit)
             Triple(r, exact, eng)
         }
         steps += Step(if (chosen.size == 1) "Result" else "Results",
             shown.joinToString(",\\quad ") { (r, exact, eng) ->
-                val same = r is S.Num && (r as S.Num).v.isInteger && Math.abs(Sym.eval(r, emptyMap())) < 1000
-                "${target.tex} = " + if (same) eng else "$exact \\approx $eng"
+                val same = if (isFinance(f)) Eng.isExactPlain(r, target.unit)
+                    else r is S.Num && (r as S.Num).v.isInteger && Math.abs(Sym.eval(r, emptyMap())) < 1000
+                when {
+                    numeric -> "${target.tex} \\approx $eng"
+                    same -> "${target.tex} = $eng"
+                    exact.length > 60 -> "${target.tex} \\approx $eng"      // a huge exact fraction helps no one
+                    else -> "${target.tex} = $exact \\approx $eng"
+                }
             }, notes.drop(if (iso != null) 1 else 0).firstOrNull())
         val answer = shown.joinToString(",\\quad ") { (r, _, eng) ->
-            val exactNumber = isTidy(r)
+            val exactNumber = if (isFinance(f)) Eng.isExactPlain(r, target.unit) else isTidy(r)
             "${target.tex} ${if (exactNumber) "=" else "\\approx"} $eng"
         }
         lastValues = chosen.map { Sym.eval(it, emptyMap()) }
@@ -374,12 +564,15 @@ object Formulas {
     }
 
     /** Puts the numbers into the rearranged formula's LaTeX, in engineering notation. */
-    private fun substituteTex(tex: String, values: Map<Char, S>): String {
+    /** Engineering notation (4.7 kΩ) for engineering formulas; plain numbers (12,345.68) for finance. */
+    private fun number(f: Formula, d: Double, unit: String) = if (isFinance(f)) Eng.plainFormat(d, unit) else Eng.format(d, unit)
+
+    private fun substituteTex(tex: String, values: Map<Char, S>, format: (Double) -> String): String {
         val sb = StringBuilder()
         for ((i, ch) in tex.withIndex()) {
             val v = values[ch]
             if (v == null) { sb.append(ch); continue }
-            val shown = Eng.format(Sym.eval(v, emptyMap()))
+            val shown = format(Sym.eval(v, emptyMap()))
             val before = tex.substring(0, i).trimEnd().lastOrNull()
             val after = tex.substring(i + 1).trimStart().firstOrNull()
             fun factorLike(c: Char?) = c != null && (c.isLetterOrDigit() || c in '\uE000'..'\uE0FF')
@@ -475,6 +668,9 @@ object Formulas {
             val r = (lo + hi) / 2
             if (Math.abs(at(r)) < 1e-6 * Math.max(1.0, Math.abs(at(xs[i])))) roots += r
         }
-        return roots.distinctBy { Math.round(it * 1e9) }
+        val distinct = roots.distinctBy { Math.round(it * 1e9) }
+        // Crossings far out (|x| > 10¹²) are usually rounding noise where the formula levels off.
+        val sensible = distinct.filter { Math.abs(it) <= 1e12 }
+        return if (sensible.isNotEmpty()) sensible else distinct
     }
 }

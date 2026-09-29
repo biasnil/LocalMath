@@ -56,7 +56,7 @@ object Tex {
     fun expr(e: Expr): String = when (e) {
         is Expr.Num -> if (e.value.isInteger || e.text == null) rational(e.value) else e.text
         is Expr.Var -> e.name.toString()
-        is Expr.Const -> if (e.name == 'π') "\\pi" else "e"
+        is Expr.Const -> when (e.name) { 'π' -> "\\pi"; 'i' -> "i"; else -> "e" }
         is Expr.Func -> func(e)
         is Expr.Neg -> "-" + wrap(e.inner, 3)
         is Expr.Add -> "${expr(e.left)} + ${wrap(e.right, 1)}"
@@ -97,6 +97,7 @@ object Tex {
             "sqrt" -> "\\sqrt{$arg}"
             "abs" -> "\\left|$arg\\right|"
             "exp" -> "e^{$arg}"
+            "conj" -> "\\overline{$arg}"
             else -> {
                 val simple = e.arg is Expr.Var || e.arg is Expr.Const || (e.arg is Expr.Num && e.arg.value.sign >= 0)
                 funcName(e.name) + if (simple) " $arg" else "\\left($arg\\right)"
@@ -107,6 +108,9 @@ object Tex {
     /** LaTeX for a function name; inverse hyperbolics aren't built-in KaTeX commands. */
     fun funcName(name: String) = when (name) {
         "arsinh", "arcosh", "artanh" -> "\\operatorname{$name}"
+        "real" -> "\\operatorname{Re}"
+        "imag" -> "\\operatorname{Im}"
+        "conj" -> "\\operatorname{conj}"
         else -> "\\$name"
     }
 
@@ -121,7 +125,7 @@ object Tex {
         is Expr.Div -> 4
         is Expr.Pow -> 4
         is Expr.Num -> if (e.value.sign < 0 || (!e.value.isInteger && e.text == null)) 3 else 5
-        is Expr.Func -> if (e.name == "sqrt" || e.name == "abs") 5 else 4
+        is Expr.Func -> if (e.name == "sqrt" || e.name == "abs" || e.name == "conj") 5 else 4
         is Expr.Var, is Expr.Const, is Expr.Derivative -> 5
         is Expr.Limit, is Expr.Sum -> 2
         is Expr.Inf, is Expr.Seq, is Expr.Prime, is Expr.Call -> 5

@@ -22,6 +22,10 @@ object Eng {
     fun parseValue(raw: String): S? {
         var t = raw.trim().replace(" ", "")
         if (t.isEmpty()) return null
+        // Money and percentages: "$1,250.50", "5%", "€300"
+        t = t.trimStart('$', '€', '£', '¥', '₹').removeSuffix("%")
+        if (Regex("^-?\\d{1,3}(,\\d{3})+(\\.\\d+)?$").matches(t)) t = t.replace(",", "")
+        if (t.isEmpty()) return null
         // 3.3e-6 / 3.3E6
         Regex("^([-−]?[0-9.]+)[eE]([-−+]?[0-9]+)$").matchEntire(t)?.let { m ->
             t = "${m.groupValues[1]}×10^(${m.groupValues[2].replace('−', '-')})"
@@ -54,6 +58,44 @@ object Eng {
             val body = (prefix + u).trim()
             if (body.isEmpty()) m else "$m\\,${if (prefix.isEmpty()) u else "\\mathrm{$prefix}$u"}"
         } else "$m \\times 10^{$exp3}" + if (u.isEmpty()) "" else "\\,$u"
+    }
+
+    /**
+     * Plain notation for money, percentages and counts (finance formulas): 12{,}345.68 for money (two decimals),
+     * 5.25\,\% and 7.2725\,years otherwise (up to four decimals).
+     */
+    fun plainFormat(d: Double, unit: String = ""): String {
+        if (!d.isFinite()) return Tex.decimal(d)
+        val decimals = if (unit == MONEY) 2 else 4
+        val a = Math.abs(d)
+        val body = if (a != 0.0 && (a >= 1e15 || a < 0.5 * Math.pow(10.0, -decimals.toDouble()))) {
+            val exp = Math.floor(Math.log10(a)).toInt()
+            val mant = BigDecimal(d / Math.pow(10.0, exp.toDouble())).round(MathContext(4)).stripTrailingZeros().toPlainString()
+            "$mant \\times 10^{$exp}"
+        } else {
+            val bd = BigDecimal(d).setScale(decimals, java.math.RoundingMode.HALF_UP)
+            val s = (if (unit == MONEY) bd else bd.stripTrailingZeros()).toPlainString()
+            val negative = s.startsWith("-")
+            val digits = s.removePrefix("-")
+            val whole = digits.substringBefore('.')
+            val frac = digits.substringAfter('.', "")
+            val grouped = whole.reversed().chunked(3).map { it.reversed() }.reversed().joinToString("{,}")
+            (if (negative && digits.any { it in '1'..'9' }) "-" else "") + grouped + (if (frac.isEmpty()) "" else ".$frac")
+        }
+        return body + when (unit) {
+            "", MONEY -> ""
+            "%" -> "\\%"
+            else -> "\\,${unitTex(unit)}"
+        }
+    }
+
+    /** True when [plainFormat] shows the exact value (no rounding). */
+    fun isExactPlain(r: S, unit: String): Boolean {
+        val v = (r as? S.Num)?.v ?: return false
+        return try {
+            val bd = BigDecimal(v.num).divide(BigDecimal(v.den))
+            bd.stripTrailingZeros().scale() <= (if (unit == MONEY) 2 else 4)
+        } catch (_: ArithmeticException) { false }
     }
 
     private fun unitTex(unit: String) = when (unit) {

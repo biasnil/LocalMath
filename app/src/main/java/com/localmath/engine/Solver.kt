@@ -8,20 +8,33 @@ object Solver {
     fun solve(source: String): Solution = solve(Parser.parse(source))
 
     fun solve(input: Input): Solution = when (input) {
-        is Input.System -> system(input.equations)
+        is Input.System -> {
+            if (input.equations.any { Complex.involved(it.left) || Complex.involved(it.right) })
+                throw MathError("Systems with complex numbers aren't supported yet — solve one equation at a time")
+            system(input.equations)
+        }
         is Input.Inequality -> {
-            if (input.left.has { it is Expr.Special } || input.right.has { it is Expr.Special })
-                throw MathError("lim, Σ, aₙ and y' can't be used in inequalities")
+            checkInequality(listOf(input.left, input.right))
             InequalitySolver.solve(input)
         }
-        is Input.Expression -> expression(input.expr)
+        is Input.Between -> {
+            checkInequality(listOf(input.left, input.middle, input.right))
+            InequalitySolver.solveBetween(input)
+        }
+        is Input.Expression -> if (Complex.involved(input.expr)) ComplexSolver.expression(input.expr) else expression(input.expr)
         is Input.Equation -> when {
             isOde(input) -> Ode.solve(listOf(input))
             input.left is Expr.Seq -> Sequences.solve(listOf(input))
+            Complex.involved(input.left) || Complex.involved(input.right) -> ComplexSolver.equation(input.left, input.right)
             input.left.has { it is Expr.Special } || input.right.has { it is Expr.Special } ->
                 throw MathError("For sequences write a_n = …; for differential equations use y'. lim and Σ go on their own.")
             else -> equation(input.left, input.right)
         }
+    }
+
+    private fun checkInequality(parts: List<Expr>) {
+        if (parts.any { p -> p.has { it is Expr.Special } }) throw MathError("lim, Σ, aₙ and y' can't be used in inequalities")
+        if (parts.any { Complex.involved(it) }) throw MathError("Complex numbers can't be compared with < or >, so inequalities need real numbers")
     }
 
     private fun isOde(e: Input.Equation) =
@@ -212,13 +225,20 @@ object Solver {
         is Outcome.Roots -> {
             val real = PolyEquation.distinctRoots(outcome.roots.filter { it.isReal })
             val complex = outcome.roots.filter { !it.isReal }
+            val complexAnswer = outcome.complexText ?: complex.joinToString(",\\; ") { "$v ${if (it.approximate) "\\approx" else "="} ${it.latex}" }
             val answer = when {
                 real.isNotEmpty() -> outcome.combined ?: Tex.orList(real.map {
                     if (it.approximate) "$v \\approx ${it.latex}" else "$v = ${it.latex}"
                 })
-                complex.isNotEmpty() -> "\\text{No real solutions}"
+                // Only complex roots: show them, and say there are no real ones underneath.
+                complex.isNotEmpty() -> complexAnswer
                 else -> "\\text{No solution}"
             }
+            if (real.isEmpty() && complex.isNotEmpty()) {
+                val messy = complex.any { !it.approximate && (it.latex.contains("\\frac") || it.latex.contains("\\sqrt")) }
+                val decimals = if (messy) " \\qquad " + Tex.orList(complex.map { "$v \\approx ${Complex.decimal(it.re, it.im)}" }) else ""
+                Solution(outcome.kind, steps, answer, "\\text{No real solutions (these are complex)}$decimals", graph)
+            } else {
             val parts = mutableListOf<String>()
             val needsDecimals = real.any { !it.approximate && (it.exact == null || !it.exact.isInteger) }
             if (needsDecimals) parts += Tex.orList(real.map { "$v \\approx ${Tex.decimal(it.re)}" })
@@ -226,6 +246,7 @@ object Solver {
                 parts += "\\text{Complex: } " + (outcome.complexText ?: complex.joinToString(",\\; ") { "$v = ${it.latex}" })
             }
             Solution(outcome.kind, steps, answer, parts.takeIf { it.isNotEmpty() }?.joinToString(" \\qquad "), graph)
+            }
         }
     }
 

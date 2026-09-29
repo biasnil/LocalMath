@@ -137,6 +137,10 @@ object Sym {
         if (b is S.Num && b.v.isOne) return ONE
         if (b is S.Num && b.v.isZero) return ZERO
         if (b == E && e is S.Func && e.name == "ln") return e.arg
+        // e^{k ln u} = u^k
+        if (b == E && e is S.Prod && e.factors.size == 2 && e.factors[0] is S.Num && (e.factors[1] as? S.Func)?.name == "ln") {
+            return pow((e.factors[1] as S.Func).arg, e.factors[0])
+        }
         return S.Pow(b, e)
     }
 
@@ -151,6 +155,20 @@ object Sym {
             if (r.num.abs() > BigInteger.valueOf(400)) return null
             return S.Num(b.pow(r.num.toInt()))
         }
+        // Exact roots of perfect powers: 8^(1/3) = 2, (16/81)^(3/4) = 8/27.
+        if (b.sign > 0 && r.den <= BigInteger.valueOf(12) && r.num.abs() < BigInteger.valueOf(40)) {
+            val q = r.den.toInt()
+            val top = exactRoot(b.num, q)
+            val bottom = exactRoot(b.den, q)
+            if (top != null && bottom != null) return S.Num(Rational.of(top, bottom).pow(r.num.toInt()))
+        }
+        // Odd roots of negatives: (−8)^(1/3) = −2.
+        if (b.sign < 0 && r.den.testBit(0) && r.den <= BigInteger.valueOf(11) && r.num.abs() < BigInteger.valueOf(40)) {
+            val q = r.den.toInt()
+            val top = exactRoot(b.num.negate(), q)
+            val bottom = exactRoot(b.den, q)
+            if (top != null && bottom != null) return S.Num(Rational.of(top.negate(), bottom).pow(r.num.toInt()))
+        }
         if (r.den == BigInteger.TWO && b.sign > 0 && r.num.abs() < BigInteger.valueOf(40)) {
             val k = r.num.toInt()                   // b^(k/2) = (b^k)^(1/2)
             val bk = b.pow(k)
@@ -159,6 +177,22 @@ object Sym {
             if (inside == BigInteger.ONE) return S.Num(coef)
             val root = S.Pow(S.Num(Rational.of(inside)), HALF)
             return if (coef.isOne) root else S.Prod(listOf(S.Num(coef), root))
+        }
+        return null
+    }
+
+    /** The whole-number q-th root of n, or null if n isn't a perfect q-th power. */
+    private fun exactRoot(n: BigInteger, q: Int): BigInteger? {
+        if (n.signum() < 0 || n.bitLength() > 4000) return null
+        if (n <= BigInteger.ONE) return n
+        var lo = BigInteger.ONE
+        var hi = BigInteger.ONE.shiftLeft(n.bitLength() / q + 1)
+        while (lo <= hi) {
+            val mid = (lo + hi).shiftRight(1)
+            val p = mid.pow(q)
+            val c = p.compareTo(n)
+            if (c == 0) return mid
+            if (c < 0) lo = mid + BigInteger.ONE else hi = mid - BigInteger.ONE
         }
         return null
     }
@@ -332,7 +366,11 @@ object Sym {
     fun from(e: Expr): S = when (e) {
         is Expr.Num -> S.Num(e.value)
         is Expr.Var -> S.Var(e.name)
-        is Expr.Const -> if (e.name == 'π') PI else E
+        is Expr.Const -> when (e.name) {
+            'π' -> PI
+            'i' -> throw MathError("i (√−1) works in arithmetic and equations, but not with d/dx, ∫, lim, Σ, inequalities or formulas yet")
+            else -> E
+        }
         is Expr.Neg -> neg(from(e.inner))
         is Expr.Add -> add(from(e.left), from(e.right))
         is Expr.Sub -> sub(from(e.left), from(e.right))

@@ -80,7 +80,7 @@ private val FUNCTIONS = listOf(
     listOf(func("sin⁻¹", "arcsin"), func("cos⁻¹", "arccos"), func("tan⁻¹", "arctan"), func("log", "log"), POWER),
     listOf(fn("√", "√(", "\\sqrt{#0}"), fn("eˣ", "e^(", "e^{#0}"), fn("e", "e"), fn("π", "π", "\\pi"), op("(")),
     listOf(fn("d/dx", "d/dx(", "\\frac{d}{dx}\\left(#0\\right)"), INTEGRAL, op(","), fn("|x|", "abs(", "\\left|#0\\right|"), op(")")),
-    listOf(fn("x", "x"), op("<"), op(">"), op("≤", "≤", "\\le"), op("≥", "≥", "\\ge")),
+    listOf(fn("x", "x"), fn("i", "i"), op("<"), op(">"), op("≤", "≤", "\\le"), op("≥", "≥", "\\ge")),
 )
 
 private val CALCULUS = listOf(

@@ -32,6 +32,8 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Tab
+import androidx.compose.material3.TabRow
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
@@ -55,8 +57,12 @@ import com.localmath.engine.Solution
 
 private const val PREFS = "localmath"
 private const val FAVORITES = "favorite_formulas"
+private const val GROUP = "formula_group"
 
-/** Searchable list of engineering formulas, grouped by subject, with favourites on top. */
+/**
+ * Searchable list of formulas with one tab per group (Engineering, Finance & economics),
+ * grouped by subject, with favourites on top.
+ */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun FormulaScreen(onBack: () -> Unit) {
@@ -65,6 +71,10 @@ fun FormulaScreen(onBack: () -> Unit) {
     var favorites by remember { mutableStateOf(prefs.getStringSet(FAVORITES, emptySet())!!.toSet()) }
     var query by rememberSaveable { mutableStateOf("") }
     var openId by rememberSaveable { mutableStateOf<String?>(null) }
+    val groups = Formulas.GROUPS.keys.toList()
+    var group by rememberSaveable {
+        mutableStateOf(prefs.getString(GROUP, null)?.takeIf { it in Formulas.GROUPS } ?: groups.first())
+    }
 
     fun toggle(id: String) {
         favorites = if (id in favorites) favorites - id else favorites + id
@@ -88,20 +98,35 @@ fun FormulaScreen(onBack: () -> Unit) {
         }
     ) { padding ->
         Column(Modifier.fillMaxSize().padding(padding)) {
+            TabRow(selectedTabIndex = groups.indexOf(group).coerceAtLeast(0)) {
+                for (g in groups) {
+                    Tab(
+                        selected = g == group,
+                        onClick = {
+                            group = g
+                            prefs.edit().putString(GROUP, g).apply()
+                        },
+                        text = { Text(g, maxLines = 1) }
+                    )
+                }
+            }
             OutlinedTextField(
                 value = query, onValueChange = { query = it },
-                modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp),
+                modifier = Modifier.fillMaxWidth().padding(start = 12.dp, end = 12.dp, top = 8.dp),
                 singleLine = true,
-                placeholder = { Text("Search: resistor, capacitor, speed…") }
+                placeholder = {
+                    Text(if (group == Formulas.FINANCE) "Search: loan, interest, margin, GDP…" else "Search: resistor, capacitor, speed…")
+                }
             )
-            val found = Formulas.search(query)
+            val categories = Formulas.GROUPS.getValue(group)
+            val found = Formulas.search(query).filter { it.category in categories }
             val favs = found.filter { it.id in favorites }
             LazyColumn(Modifier.fillMaxSize().padding(top = 8.dp)) {
                 if (favs.isNotEmpty()) {
                     item { Header("★ Favourites") }
                     items(favs, key = { "fav-" + it.id }) { f -> FormulaRow(f, true, { openId = f.id }, { toggle(f.id) }) }
                 }
-                for (cat in Formulas.CATEGORIES) {
+                for (cat in categories) {
                     val inCat = found.filter { it.category == cat }
                     if (inCat.isEmpty()) continue
                     item(key = "h-$cat") { Header(cat) }
@@ -173,7 +198,8 @@ private fun FormulaSolveScreen(f: Formula, favorite: Boolean, onToggleFavorite: 
             else Text(prettyMath(f.plain), fontSize = 24.sp, fontWeight = FontWeight.Medium, modifier = Modifier.padding(vertical = 8.dp))
             f.note?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
             Text("Tap ◉ next to the one you want to find, and fill in the rest. " +
-                "Prefixes work: 4.7k, 100n, 2.2M, 3.3µ (or 3.3u), 1e-3.",
+                if (Formulas.groupOf(f) == Formulas.FINANCE) "Rates are in percent (type 5 for 5%). Amounts can be typed as 250000, 250,000 or 250k."
+                else "Prefixes work: 4.7k, 100n, 2.2M, 3.3µ (or 3.3u), 1e-3.",
                 style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
 
             for (fv in f.vars) {

@@ -15,4 +15,4 @@ data class Solution(
 )
 
 /** Thrown for anything the user typed that the engine can't handle; the message is shown in the UI. */
-class MathError(message: String) : Exception(message)
+open class MathError(message: String) : Exception(message)
