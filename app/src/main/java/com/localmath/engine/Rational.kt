@@ -58,7 +58,13 @@ class Rational private constructor(val num: BigInteger, val den: BigInteger) : C
         return of(den.pow(-e), num.pow(-e))
     }
 
-    fun toDouble(): Double = num.toDouble() / den.toDouble()
+    fun toDouble(): Double {
+        // Very long numerators and denominators overflow a double on their own (∞/∞), so divide exactly first.
+        if (num.bitLength() > 1000 || den.bitLength() > 1000) {
+            return java.math.BigDecimal(num).divide(java.math.BigDecimal(den), java.math.MathContext.DECIMAL64).toDouble()
+        }
+        return num.toDouble() / den.toDouble()
+    }
 
     override fun compareTo(other: Rational) = (num * other.den).compareTo(other.num * den)
     override fun equals(other: Any?) = other is Rational && num == other.num && den == other.den

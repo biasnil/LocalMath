@@ -28,6 +28,9 @@ object Sequences {
     /** Tidier LaTeX for a second-order closed form (the symbolic form multiplies everything out). */
     private var closedTex: String? = null
 
+    /** Set when the closed form oscillates (complex roots), where the limit engine can't judge. */
+    private var limitOverride: LV? = null
+
     fun solve(equations: List<Input.Equation>): Solution {
         val definitions = equations.filter { it.left is Expr.Seq && (it.left as Expr.Seq).index.variables().isNotEmpty() }
         if (definitions.size != 1) throw MathError("Give one rule for the sequence, like a_n = 2n + 1 or a_n = 2a_(n-1); a_1 = 3")
@@ -155,6 +158,7 @@ object Sequences {
             "Each new term comes from the ${if (order == 1) "one" else "$order"} before it.")
 
         closedTex = null
+        limitOverride = null
         val closed = when (order) {
             1 -> firstOrder(name, n, rule, start, initial.getValue(start), steps)
             2 -> secondOrder(name, n, rule, start, initial.getValue(start), initial.getValue(start + 1), steps)
@@ -175,7 +179,7 @@ object Sequences {
             val tex = closedTex ?: Sym.latex(closed, n)
             steps += Step("Formula for the \\(n\\)th term", "${sub(name, n)} = $tex",
                 "Checked against the terms worked out above.")
-            val l = try { LimitEngine(n, null, 1, 0, mutableListOf()).solve(closed) } catch (_: MathError) { null }
+            val l = limitOverride ?: try { LimitEngine(n, null, 1, 0, mutableListOf()).solve(closed) } catch (_: MathError) { null }
             val (ans, verdict) = verdict(l)
             steps += Step(verdict, "\\lim_{$n \\to \\infty} ${sub(name, n)} = $ans")
             return Solution("Recursive sequence", steps, "${sub(name, n)} = $tex", list, graphOf(name, pts, l))
@@ -237,7 +241,7 @@ object Sequences {
         steps += Step("Try \\(${sub(name, n)} = x^{$n}\\): the characteristic equation",
             "x^2 = ${Polynomial(mapOf(1 to p.v, 0 to q.v)).format('x')} \\quad\\Rightarrow\\quad ${Polynomial(mapOf(2 to Rational.ONE, 1 to -p.v, 0 to -q.v)).format('x')} = 0",
             "Its discriminant is \\(${Tex.rational(disc)}\\).")
-        if (disc.sign < 0) return null
+        if (disc.sign < 0) return complexRoots(name, n, p.v, q.v, disc, start, a0, a1, steps)
         val half = S.Num(p.v / Rational.of(2))
         val rootPart = mul(Sym.HALF, pow(S.Num(disc), Sym.HALF))
         val x1 = add(half, rootPart)
@@ -265,6 +269,60 @@ object Sequences {
         val mt = Sym.latex(m, n)
         closedTex = "${bracket(A)}\\,${bracket(x1)}^{$mt} + ${bracket(B)}\\,${bracket(x2)}^{$mt}".replace("+ \\left(-", "- \\left(")
         return add(mul(A, pow(x1, m)), mul(B, pow(x2, m)))
+    }
+
+    /**
+     * Characteristic roots x = p/2 ± i·√(−D)/2 = ρ(cos θ ± i sin θ), so
+     * a_n = ρ^m (A cos mθ + B sin mθ) with ρ = √(−q), cos θ = p/(2ρ), A = a₀, B = (2a₁ − p·a₀)/√(−D).
+     */
+    private fun complexRoots(name: Char, n: Char, p: Rational, q: Rational, disc: Rational, start: Long, a0: S, a1: S,
+                             steps: MutableList<Step>): S? {
+        val half = S.Num(p / Rational.of(2))
+        val beta = mul(Sym.HALF, pow(S.Num(-disc), Sym.HALF))
+        steps += Step("The roots are complex", "x = ${Sym.latex(half)} \\pm ${Complex.imagTex(beta)}",
+            "Complex roots come in a conjugate pair, so the terms can be written with \\(\\cos\\) and \\(\\sin\\).")
+        val rho = pow(S.Num(-q), Sym.HALF)                      // |x|² = (p/2)² + (−D/4) = −q
+        val cosTheta = Sym.div(half, rho)
+        val theta = Complex.angleOf(Sym.eval(cosTheta, emptyMap()).let { Math.acos(it) })
+            ?: Sym.func("arccos", cosTheta)
+        steps += Step("Write them in polar form \\(x = \\rho\\,(\\cos\\theta \\pm i\\sin\\theta)\\)",
+            "\\rho = \\sqrt{${Tex.rational(-q)}}" + (if (Sym.latex(rho) == "\\sqrt{${Tex.rational(-q)}}") "" else " = ${Sym.latex(rho)}") + ",\\quad \\cos\\theta = \\frac{${Sym.latex(half)}}{${Sym.latex(rho)}} \\;\\Rightarrow\\; \\theta = ${Sym.latex(theta)}",
+            "\\(\\rho\\) is the distance from 0 (\\(\\rho^2\\) = product of the roots) and \\(\\theta\\) is the angle.")
+        val m = add(S.Var(n), Sym.num(-start))
+        val mTex = if (start == 0L) "$n" else "$n - $start"
+        val A = a0
+        val B = Sym.div(add(mul(Sym.num(2), a1), neg(mul(S.Num(p), a0))), pow(S.Num(-disc), Sym.HALF))
+        val mTheta = if (start == 0L) "$n\\theta" else "($mTex)\\theta"
+        steps += Step("So the terms are", "${sub(name, n)} = \\rho^{$mTex}\\left(A\\cos $mTheta + B\\sin $mTheta\\right)",
+            "Using the starting values: \\(A = ${sub(name, start)} = ${Sym.latex(A)}\\), \\(B = \\frac{2${sub(name, start + 1)} - ${bracket(S.Num(p))}${sub(name, start)}}{\\sqrt{${Tex.rational(-disc)}}} = ${Sym.latex(B)}\\).")
+
+        val angle = mul(theta, m)
+        val angleTex = if (start == 0L) Sym.latex(angle, n) else "${Sym.latex(theta)}\\left($mTex\\right)"
+        val parts = mutableListOf<String>()
+        fun part(c: S, fn: String) {
+            if (c == Sym.ZERO) return
+            val (k, _) = Sym.splitCoef(c)
+            val trig = "\\$fn\\left($angleTex\\right)"
+            val body = when {
+                c == Sym.ONE -> trig
+                c == Sym.MINUS_ONE -> "-$trig"
+                c is S.Sum -> "\\left(${Sym.latex(c)}\\right)$trig"
+                else -> "${Sym.latex(c)}\\,$trig"
+            }
+            parts += if (parts.isNotEmpty() && k.sign < 0) body else if (parts.isNotEmpty()) "+ $body" else body
+        }
+        part(A, "cos")
+        part(B, "sin")
+        val inner = parts.joinToString(" ").ifEmpty { "0" }
+        val rhoTex = if (rho is S.Num) bracket(rho) else "\\left(${Sym.latex(rho)}\\right)"
+        closedTex = if (rho == Sym.ONE) inner
+            else "$rhoTex^{${Sym.latex(m, n)}}" + if (parts.size > 1 || inner.startsWith("-")) "\\left($inner\\right)" else inner
+        limitOverride = when {
+            Sym.eval(rho, emptyMap()) < 1 - 1e-12 -> LV.Fin(Sym.ZERO)
+            A == Sym.ZERO && B == Sym.ZERO -> LV.Fin(Sym.ZERO)
+            else -> LV.DNE("oscillates")
+        }
+        return mul(pow(rho, m), add(mul(A, Sym.func("cos", angle)), mul(B, Sym.func("sin", angle))))
     }
 
     /** Solves a·A + b·B = e,  c·A + d·B = f  (Cramer's rule). */

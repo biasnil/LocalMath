@@ -219,7 +219,7 @@ class PolyEquation(private val v: Char, private val steps: MutableList<Step>) {
         return if (d.signum() < 0) {
             steps += Step("\\(\\Delta\\) is negative", "\\text{No real solutions, only the complex pair above}")
             Outcome.Roots(kind, listOf(Root(over(minusTop), center, -spread), Root(over(plusTop), center, spread)),
-                complexText = "$exact \\approx ${Tex.decimal(center)} \\pm ${Tex.decimal(spread)}i")
+                complexText = exact)
         } else {
             Outcome.Roots(kind, listOf(Root(over(minusTop), center - spread), Root(over(plusTop), center + spread)), combined = exact)
         }

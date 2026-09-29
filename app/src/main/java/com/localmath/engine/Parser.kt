@@ -69,6 +69,11 @@ sealed class Input {
     data class System(val equations: List<Equation>) : Input()
     /** [op] is one of "<", ">", "≤", "≥". */
     data class Inequality(val left: Expr, val op: String, val right: Expr) : Input()
+    /** left op1 middle op2 right, e.g. 1 < x ≤ 3. Both signs point the same way. */
+    data class Between(val left: Expr, val op1: String, val middle: Expr, val op2: String, val right: Expr) : Input() {
+        val lower get() = Inequality(left, op1, middle)
+        val upper get() = Inequality(middle, op2, right)
+    }
 }
 
 private sealed class Token {
@@ -98,11 +103,15 @@ object Parser {
     /** Longest names first so "exp" wins over "e" and "sqrt" over "s". */
     private val FUNCTION_NAMES = listOf(
         "arsinh", "arcosh", "artanh", "arcsin", "arccos", "arctan",
-        "sinh", "cosh", "tanh", "sqrt", "sin", "cos", "tan", "exp", "log", "abs", "ln"
+        "sinh", "cosh", "tanh", "sqrt", "conj", "real", "imag", "sin", "cos", "tan", "exp", "log", "abs", "arg", "ln"
     )
 
-    fun parse(source: String): Input {
-        var tokens = tokenize(source)
+    /**
+     * [imaginaryUnit]: the letter i means √−1 (true everywhere except the formula library,
+     * where i is an ordinary letter such as V_in).
+     */
+    fun parse(source: String, imaginaryUnit: Boolean = true): Input {
+        var tokens = tokenize(source, imaginaryUnit)
         if (tokens.isEmpty()) throw MathError("Type an equation or expression first")
         // "5 * 6 =" means "work out 5 * 6", like a calculator.
         while (tokens.size > 1 && tokens.last() == Token.Equals) tokens = tokens.dropLast(1)
@@ -120,7 +129,7 @@ object Parser {
         val equations = nonEmpty.mapIndexed { i, part ->
             when (val input = TokenStream(autoClose(part), odeMode).parseInput()) {
                 is Input.Equation -> input
-                is Input.Inequality -> throw MathError("Systems of inequalities aren't supported yet")
+                is Input.Inequality, is Input.Between -> throw MathError("Systems of inequalities aren't supported yet")
                 else -> throw MathError("Part ${i + 1} of the system needs an '=' sign")
             }
         }
@@ -138,7 +147,7 @@ object Parser {
         return tokens + List(depth) { Token.RParen }
     }
 
-    private fun tokenize(src: String): List<Token> {
+    private fun tokenize(src: String, imaginaryUnit: Boolean): List<Token> {
         val out = mutableListOf<Token>()
         var i = 0
         while (i < src.length) {
@@ -167,7 +176,7 @@ object Parser {
                 c.isLetter() && c != 'Σ' -> {
                     val start = i
                     while (i < src.length && src[i].isLetter() && src[i] != 'π' && src[i] != 'Σ') i++
-                    splitWord(src.substring(start, i), out)
+                    splitWord(src.substring(start, i), out, imaginaryUnit)
                 }
                 c == '√' -> { out += Token.Func("sqrt"); i++ }
                 c == '∫' -> { out += Token.Integral; i++ }
@@ -202,9 +211,9 @@ object Parser {
         return out
     }
 
-    /** "xsinx" -> x, sin, x.  "pi" -> π.  "e" -> Euler's number. Other letters are variables. */
+    /** "xsinx" -> x, sin, x.  "pi" -> π.  "e" -> Euler's number, "i" -> √−1. Other letters are variables. */
     /** Function names are matched in any case (Sin = sin); single letters keep their case (R ≠ r). */
-    private fun splitWord(word: String, out: MutableList<Token>) {
+    private fun splitWord(word: String, out: MutableList<Token>, imaginaryUnit: Boolean) {
         val lower = word.lowercase()
         var j = 0
         while (j < word.length) {
@@ -213,6 +222,7 @@ object Parser {
                 name != null -> { out += Token.Func(name); j += name.length }
                 lower.startsWith("pi", j) && word.startsWith("pi", j) -> { out += Token.Const('π'); j += 2 }
                 word[j] == 'e' -> { out += Token.Const('e'); j++ }
+                word[j] == 'i' && imaginaryUnit -> { out += Token.Const('i'); j++ }
                 else -> { out += Token.Var(word[j]); j++ }
             }
         }
@@ -232,7 +242,20 @@ object Parser {
                 next()
                 if (peek() == null) throw MathError("Nothing on the right side of '${rel.op}'")
                 val right = parseExpr()
-                if (peek() is Token.Rel) throw MathError("Chained inequalities like 1 < x < 3 aren't supported yet — enter one at a time")
+                val rel2 = peek()
+                if (rel2 is Token.Rel) {
+                    // 1 < x < 3, 5 ≥ 2x + 1 > −3
+                    next()
+                    if (peek() == null) throw MathError("Nothing on the right side of '${rel2.op}'")
+                    val third = parseExpr()
+                    if (peek() is Token.Rel) throw MathError("Use at most two inequality signs, like 1 < x < 3")
+                    if (peek() != null) throw unexpected()
+                    val up = rel.op == "<" || rel.op == "≤"
+                    if (up != (rel2.op == "<" || rel2.op == "≤")) {
+                        throw MathError("Both signs must point the same way, like 1 < x < 3 or 3 > x > 1")
+                    }
+                    return Input.Between(left, rel.op, right, rel2.op, third)
+                }
                 if (peek() != null) throw unexpected()
                 return Input.Inequality(left, rel.op, right)
             }
@@ -426,7 +449,13 @@ object Parser {
             return when (args.size) {
                 2 -> Expr.Sum(body, null, args[0], args[1])
                 3 -> {
-                    val v = args[0] as? Expr.Var ?: throw MathError("In Σ(f, k, a, b) the second item must be the letter you sum over")
+                    val index = args[0]
+                    // Σ(i², i, 1, 10): here i is the counter, not √−1.
+                    if (index is Expr.Const && index.name == 'i') {
+                        val b = body.mapNodes { if (it is Expr.Const && it.name == 'i') Expr.Var('i') else null }
+                        return Expr.Sum(b, 'i', args[1], args[2])
+                    }
+                    val v = index as? Expr.Var ?: throw MathError("In Σ(f, k, a, b) the second item must be the letter you sum over")
                     Expr.Sum(body, v.name, args[1], args[2])
                 }
                 else -> throw MathError("Write sums as Σ(f, a, b) or Σ(f, k, a, b)")

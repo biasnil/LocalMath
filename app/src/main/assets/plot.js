@@ -14,6 +14,12 @@ function pw(a, b) {
 }
 function ln(x) { return x > 0 ? Math.log(x) : NaN; }
 function lg(x) { return x > 0 ? Math.log(x) / Math.LN10 : NaN; }
+/* Numerical solutions: values ys sampled every h from x0, joined by straight lines. */
+function tab(x0, h, ys, x) {
+  var t = (x - x0) / h, i = Math.floor(t);
+  if (i < 0 || i >= ys.length - 1) return (i === ys.length - 1 && t === i) ? ys[i] : NaN;
+  return ys[i] + (ys[i + 1] - ys[i]) * (t - i);
+}
 
 function plotGraph(canvas, G, C, buttons) {
   var ctx = canvas.getContext('2d');
