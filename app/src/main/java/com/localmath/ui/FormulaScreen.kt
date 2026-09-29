@@ -3,6 +3,13 @@ package com.localmath.ui
 import android.content.Context
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.clickable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.layout.positionInParent
+import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
+import kotlinx.coroutines.delay
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -135,6 +142,18 @@ private fun FormulaSolveScreen(f: Formula, favorite: Boolean, onToggleFavorite: 
     val values = remember(f.id) { mutableStateMapOf<Char, String>() }
     var unknown by remember(f.id) { mutableStateOf(f.vars.first().letter) }
     var result by remember(f.id) { mutableStateOf<Result<Solution>?>(null) }
+    val scroll = rememberScrollState()
+    var resultTop by remember { mutableIntStateOf(0) }
+    val keyboard = LocalSoftwareKeyboardController.current
+    val focus = LocalFocusManager.current
+
+    // After solving, scroll so the answer is at the top of the screen.
+    LaunchedEffect(result) {
+        if (result != null) {
+            delay(80)
+            scroll.animateScrollTo(resultTop)
+        }
+    }
 
     Scaffold(
         topBar = {
@@ -146,7 +165,7 @@ private fun FormulaSolveScreen(f: Formula, favorite: Boolean, onToggleFavorite: 
         }
     ) { padding ->
         Column(
-            Modifier.fillMaxSize().padding(padding).verticalScroll(rememberScrollState()).padding(horizontal = 12.dp),
+            Modifier.fillMaxSize().padding(padding).verticalScroll(scroll).padding(horizontal = 12.dp),
             verticalArrangement = Arrangement.spacedBy(6.dp)
         ) {
             val tex = remember(f.id) { runCatching { Formulas.tex(f) }.getOrNull() }
@@ -174,13 +193,18 @@ private fun FormulaSolveScreen(f: Formula, favorite: Boolean, onToggleFavorite: 
             }
 
             Button(
-                onClick = { result = runCatching { Formulas.solve(f, values.toMap(), unknown) } },
+                onClick = {
+                    keyboard?.hide()
+                    focus.clearFocus()
+                    result = runCatching { Formulas.solve(f, values.toMap(), unknown) }
+                },
                 modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp)
             ) { Text(prettyMath("Solve for ${f.vars.first { it.letter == unknown }.label}")) }
 
             result?.let { r ->
+              Box(Modifier.fillMaxWidth().onGloballyPositioned { resultTop = it.positionInParent().y.toInt() }) {
                 r.fold(
-                    onSuccess = { MathView(it, Modifier.fillMaxWidth().height(560.dp), eng = false) },
+                    onSuccess = { MathView(it, Modifier.fillMaxWidth(), eng = false, fitContent = true) },
                     onFailure = { e ->
                         Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.errorContainer)) {
                             Text(if (e is MathError) e.message ?: "Error" else "Unexpected error: ${e.message}",
@@ -188,6 +212,7 @@ private fun FormulaSolveScreen(f: Formula, favorite: Boolean, onToggleFavorite: 
                         }
                     }
                 )
+              }
             }
             Spacer(Modifier.height(24.dp))
         }
