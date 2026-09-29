@@ -36,7 +36,9 @@ sealed class KeyAction {
     object Left : KeyAction()
     object Right : KeyAction()
     object Solve : KeyAction()
-    /** 0 = numbers, 1 = functions, 2 = calculus (lim, Σ, aₙ, y′), 3 = engineering. */
+    /** A tap-to-edit editor command (MathLive, e.g. "addRowAfter"); [text] is typed instead in plain-text mode. */
+    data class Command(val name: String, val text: String) : KeyAction()
+    /** 0 = numbers, 1 = functions, 2 = calculus (lim, Σ, aₙ, y′), 3 = engineering, 4 = vectors and matrices, 5 = numbers & statistics. */
     data class GoToPage(val page: Int) : KeyAction()
 }
 
@@ -59,7 +61,8 @@ private fun prefix(label: String, power: Int, tex: String = label) =
 
 private val BACKSPACE = KeySpec("⌫", KeyAction.Backspace, KeyStyle.Action, longPress = KeyAction.Clear)
 private val FRACTION = op("÷", "÷", "\\frac{#@}{#?}")
-private val TIMES = op("×", "×", "\\cdot")
+// Plain "·": between two vectors it is the dot product (× is the cross product, on the [ ] page).
+private val TIMES = op("×", "·", "\\cdot")
 private val MINUS = op("−", "−", "-")
 private val POWER = fn("□ⁿ", "^", "#@^{#?}")
 
@@ -100,6 +103,40 @@ private val ENGINEERING = listOf(
     listOf(op("+"), MINUS, TIMES, FRACTION, fn("dB", "20log(", "20\\log_{10}\\left(#0\\right)"), fn("10ˣ", "10^(", "10^{#0}")),
 )
 
+private fun named(label: String, name: String, args: Int = 1) =
+    fn(label, "$name(", "\\operatorname{$name}\\left(#0" + ",#?".repeat(args - 1) + "\\right)")
+
+private const val MATRIX_2 = "\\begin{pmatrix}#0 & #? \\\\ #? & #?\\end{pmatrix}"
+private const val MATRIX_3 = "\\begin{pmatrix}#0 & #? & #? \\\\ #? & #? & #? \\\\ #? & #? & #?\\end{pmatrix}"
+
+// Vectors and matrices: (3, 4), 5∠30°, a·b, a×b, [[1, 2], [3, 4]], det, A⁻¹, Aᵀ, rref, eig.
+private val VECTORS = listOf(
+    listOf(fn("( , )", "(", "\\left(#0,#?\\right)"), op("∠", "∠", "\\angle "), op("°", "°", "^{\\circ}"),
+        fn("|v|", "abs(", "\\left|#0\\right|"), op(","), BACKSPACE),
+    listOf(op("a·b", "·", "\\cdot "), op("a×b", "×", "\\times "), named("angle", "angle", 2), named("unit", "unit"),
+        named("proj", "proj", 2), named("solve", "solve", 2)),
+    listOf(fn("[2×2]", "[[", MATRIX_2), fn("[3×3]", "[[", MATRIX_3),
+        KeySpec("+row", KeyAction.Command("addRowAfter", "], ["), KeyStyle.Function),
+        KeySpec("+col", KeyAction.Command("addColumnAfter", ", "), KeyStyle.Function), op("("), op(")")),
+    listOf(fn("det", "det(", "\\det\\left(#0\\right)"), fn("A⁻¹", "^(-1)", "#@^{-1}"), fn("Aᵀ", "^T", "#@^{T}"),
+        named("rref", "rref").copy(longPress = KeyAction.Insert("ref(", "\\operatorname{ref}\\left(#0\\right)")),
+        named("rank", "rank").copy(longPress = KeyAction.Insert("trace(", "\\operatorname{trace}\\left(#0\\right)")),
+        named("eig", "eig")),
+    listOf(fn("a", "a"), fn("b", "b"), fn("A", "A"), fn("B", "B"), op("="), op(";")),
+)
+
+// Numbers, counting, statistics, triangles: 5!, nCr, 15% of 80, 12:18, gcd, stats( ), triangle( ), complete( ).
+private val NUMBERS = listOf(
+    listOf(fn("n!", "!", "!"), named("nCr", "nCr", 2), named("nPr", "nPr", 2), op("%", "%", "\\%"),
+        KeySpec("of", KeyAction.Insert(" of ", "\\text{ of }"), KeyStyle.Function,
+            longPress = KeyAction.Insert(" as % of ", "\\text{ as }\\%\\text{ of }")), BACKSPACE),
+    listOf(named("gcd", "gcd", 2), named("lcm", "lcm", 2), named("factor", "factor"), named("stats", "stats"), op(":"), op(",")),
+    listOf(digit("7"), digit("8"), digit("9"), fn("△", "triangle(", "\\operatorname{triangle}\\left(a=#0,b=#?,C=#?\\right)"),
+        named("(x+p)²", "complete"), op("°", "°", "^{\\circ}")),
+    listOf(digit("4"), digit("5"), digit("6"), op("("), op(")"), op("=")),
+    listOf(digit("1"), digit("2"), digit("3"), digit("0"), digit("."), fn("x", "x")),
+)
+
 @Composable
 fun MathKeyboard(onKey: (KeyAction) -> Unit, modifier: Modifier = Modifier, solveLabel: String = "Solve") {
     val haptics = LocalHapticFeedback.current
@@ -110,18 +147,21 @@ fun MathKeyboard(onKey: (KeyAction) -> Unit, modifier: Modifier = Modifier, solv
         if (a is KeyAction.GoToPage) page = a.page else onKey(a)
     }
 
-    val grid = when (page) { 1 -> FUNCTIONS; 2 -> CALCULUS; 3 -> ENGINEERING; else -> BASIC }
+    val grid = when (page) { 1 -> FUNCTIONS; 2 -> CALCULUS; 3 -> ENGINEERING; 4 -> VECTORS; 5 -> NUMBERS; else -> BASIC }
+    // Bottom-row keys use span 2 (Solve 3) so eight keys fit with a wider Solve.
     fun pageKey(target: Int, label: String) =
-        if (page == target) KeySpec("123", KeyAction.GoToPage(0), KeyStyle.Action)
-        else KeySpec(label, KeyAction.GoToPage(target), KeyStyle.Action)
+        if (page == target) KeySpec("123", KeyAction.GoToPage(0), KeyStyle.Action, span = 2)
+        else KeySpec(label, KeyAction.GoToPage(target), KeyStyle.Action, span = 2)
     val rows = grid + listOf(
         listOf(
             pageKey(1, "f(x)"),
-            pageKey(2, "Σ lim"),
+            pageKey(2, "lim"),
             pageKey(3, "Eng"),
-            KeySpec("◀", KeyAction.Left, KeyStyle.Action),
-            KeySpec("▶", KeyAction.Right, KeyStyle.Action),
-            KeySpec(solveLabel, KeyAction.Solve, KeyStyle.Primary),
+            pageKey(4, "[ ]"),
+            pageKey(5, "n!"),
+            KeySpec("◀", KeyAction.Left, KeyStyle.Action, span = 2),
+            KeySpec("▶", KeyAction.Right, KeyStyle.Action, span = 2),
+            KeySpec(solveLabel, KeyAction.Solve, KeyStyle.Primary, span = 3),
         )
     )
 

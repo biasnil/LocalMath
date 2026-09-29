@@ -8,6 +8,9 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Button
+import androidx.compose.ui.unit.Dp
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.material3.FilterChip
 import androidx.compose.runtime.Composable
 import com.localmath.data.NotebookEntry
@@ -65,6 +68,11 @@ import kotlinx.coroutines.withContext
 
 private val EXAMPLES = listOf(
     "10000 ∥ 4700",
+    "a = (3, 5); b = (4, 2); a + b",
+    "det([[1, 2], [3, 4]])",
+    "triangle(a = 5, b = 7, C = 60°)",
+    "stats(2, 4, 4, 5, 7, 9)",
+    "complete(x² + 6x + 5)",
     "2x + 3 = 7",
     "x² − 5x + 6 = 0",
     "x³ − 6x² + 11x − 6 = 0",
@@ -100,6 +108,9 @@ fun SolverScreen() {
     var eng by remember { mutableStateOf(prefs.getBoolean("eng_answers", false)) }       // engineering notation
     var menuOpen by remember { mutableStateOf(false) }
     var notebookMode by remember { mutableStateOf(prefs.getBoolean("notebook_mode", false)) }
+    var matrixMode by remember { mutableStateOf(prefs.getBoolean("matrix_mode", false)) }
+    var matrixPanelOpen by rememberSaveable { mutableStateOf(true) }   // Matrix tab: boxes and buttons, or the answer
+    var keysOpen by remember { mutableStateOf(prefs.getBoolean("keys_open", true)) }
     var confirmClear by remember { mutableStateOf(false) }
     val notebookDao = remember { AppDatabase.get(context).notebook() }
     val notebookFlow = remember(notebookDao) { notebookDao.all() }
@@ -139,6 +150,7 @@ fun SolverScreen() {
     }
 
     fun solve(text: String) {
+        matrixPanelOpen = false   // on the Matrix tab, show the answer rather than the boxes
         input = InputState.of(text)
         if (visual) editor.set(runCatching { LatexInput.fromText(text) }.getOrDefault(""))
         solvedText = text
@@ -151,12 +163,14 @@ fun SolverScreen() {
 
     /** Notebook: work out the line (using earlier answers), save it, and clear the input. */
     fun addToNotebook(text: String) {
-        val known = Notebook.known(notebook.map { it.answer })
+        val answers = notebook.map { it.answer }
+        val known = Notebook.known(answers)
+        val objects = Notebook.objects(answers)   // vectors and matrices from earlier lines
         scope.launch {
             val entry = withContext(Dispatchers.Default) {
                 val now = System.currentTimeMillis()
                 try {
-                    val r = Notebook.evaluate(text, known)
+                    val r = Notebook.evaluate(text, known, objects)
                     NotebookEntry(input = text, answer = r.solution.answer, approx = r.solution.approx, error = null, used = r.used, timestamp = now)
                 } catch (e: MathError) {
                     NotebookEntry(input = text, answer = null, approx = null, error = e.message ?: "Error", used = null, timestamp = now)
@@ -227,6 +241,7 @@ fun SolverScreen() {
         if (visual) {
             when (action) {
                 is KeyAction.Insert -> editor.insert(action.latex ?: action.text)
+                is KeyAction.Command -> editor.command(action.name)
                 KeyAction.Backspace -> editor.command("deleteBackward")
                 KeyAction.Clear -> { solvedText = null; result = null; editor.set("") }
                 KeyAction.Left -> editor.command("moveToPreviousChar")
@@ -238,6 +253,7 @@ fun SolverScreen() {
         }
         when (action) {
             is KeyAction.Insert -> input = input.insert(action.text)
+            is KeyAction.Command -> input = input.insert(action.text)
             KeyAction.Backspace -> input = input.backspace()
             KeyAction.Clear -> { solvedText = null; result = null; input = input.clear() }
             KeyAction.Left -> input = input.left()
@@ -287,19 +303,43 @@ fun SolverScreen() {
     ) { padding ->
         Column(Modifier.fillMaxSize().padding(padding)) {
             // Normal = one problem with full steps; Notebook = running list of answers.
+            // Matrix = fill in boxes and tap an operation.
+            fun setMode(notebook: Boolean, matrix: Boolean) {
+                notebookMode = notebook; matrixMode = matrix
+                prefs.edit { putBoolean("notebook_mode", notebook); putBoolean("matrix_mode", matrix) }
+            }
             Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 2.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                FilterChip(selected = !notebookMode, label = { Text("Normal") }, onClick = {
-                    notebookMode = false; prefs.edit { putBoolean("notebook_mode", false) }
-                })
-                FilterChip(selected = notebookMode, label = { Text("Notebook") }, onClick = {
-                    notebookMode = true; prefs.edit { putBoolean("notebook_mode", true) }
-                })
+                FilterChip(selected = !notebookMode && !matrixMode, label = { Text("Normal") }, onClick = { setMode(false, false) })
+                FilterChip(selected = notebookMode && !matrixMode, label = { Text("Notebook") }, onClick = { setMode(true, false) })
+                FilterChip(selected = matrixMode, label = { Text("Matrix") }, onClick = { setMode(false, true) })
+            }
+
+            val resultArea: @Composable (Modifier) -> Unit = { mod ->
+                Box(mod) {
+                    val r = result
+                    when {
+                        r == null && solvedText != null -> Text(
+                            "Solving…", Modifier.align(Alignment.Center),
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        r == null -> if (!matrixMode) Examples(onPick = ::solve)
+                        else -> r.fold(
+                            onSuccess = { MathView(it, Modifier.fillMaxSize(), eng = eng) },
+                            onFailure = { e ->
+                                ErrorCard(
+                                    if (e is MathError) e.message ?: "Error" else "Unexpected error: ${e.message}",
+                                    Modifier.padding(12.dp)
+                                )
+                            }
+                        )
+                    }
+                }
             }
 
             val inputArea: @Composable () -> Unit = {
                 if (visual) {
                     Surface(
-                        modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp).height(96.dp),
+                        modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp).height(editorHeight(editor.latex)),
                         shape = RoundedCornerShape(16.dp),
                         color = MaterialTheme.colorScheme.surfaceContainerHigh
                     ) { MathEditor(editor, Modifier.fillMaxSize()) }
@@ -308,7 +348,20 @@ fun SolverScreen() {
                 }
             }
 
-            if (notebookMode) {
+            if (matrixMode) {
+                if (matrixPanelOpen) {
+                    MatrixPanel(
+                        onSolve = { text -> solvedText = text; solveCount++; matrixPanelOpen = false },
+                        modifier = Modifier.weight(1f).fillMaxWidth()
+                    )
+                } else {
+                    // The answer, with a bar to go back to the boxes (they keep what you typed).
+                    TextButton(onClick = { matrixPanelOpen = true }, modifier = Modifier.padding(horizontal = 4.dp)) {
+                        Text("▴ Edit matrices")
+                    }
+                    resultArea(Modifier.weight(1f).fillMaxWidth())
+                }
+            } else if (notebookMode) {
                 NotebookView(
                     entries = notebook, eng = eng,
                     onPick = { id -> insertAnswer(notebook.firstOrNull { it.id == id }?.answer) },
@@ -328,29 +381,30 @@ fun SolverScreen() {
                 Spacer(Modifier.height(6.dp))
             } else {
                 inputArea()
-                Box(Modifier.weight(1f).fillMaxWidth().padding(top = 8.dp)) {
-                    val r = result
-                    when {
-                        r == null && solvedText != null -> Text(
-                            "Solving…", Modifier.align(Alignment.Center),
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                        r == null -> Examples(onPick = ::solve)
-                        else -> r.fold(
-                            onSuccess = { MathView(it, Modifier.fillMaxSize(), eng = eng) },
-                            onFailure = { e ->
-                                ErrorCard(
-                                    if (e is MathError) e.message ?: "Error" else "Unexpected error: ${e.message}",
-                                    Modifier.padding(12.dp)
-                                )
-                            }
-                        )
+                resultArea(Modifier.weight(1f).fillMaxWidth().padding(top = 8.dp))
+            }
+
+            // The Matrix tab types into its boxes with the phone's keyboard, so ours is only for Normal and Notebook.
+            if (!matrixMode) {
+                HorizontalDivider()
+                val solveLabel = if (notebookMode) "Add" else "Solve"
+                fun setKeys(open: Boolean) { keysOpen = open; prefs.edit { putBoolean("keys_open", open) } }
+                if (keysOpen) {
+                    Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
+                        TextButton(onClick = { setKeys(false) }, modifier = Modifier.height(30.dp),
+                            contentPadding = PaddingValues(horizontal = 16.dp, vertical = 0.dp)) {
+                            Text("▾ Hide keys", fontSize = 13.sp)
+                        }
+                    }
+                    MathKeyboard(onKey = ::onKey, modifier = Modifier.fillMaxWidth(), solveLabel = solveLabel)
+                } else {
+                    Row(Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
+                        TextButton(onClick = { setKeys(true) }) { Text("▴ Keys") }
+                        Spacer(Modifier.weight(1f))
+                        Button(onClick = ::solveCurrent) { Text(solveLabel) }
                     }
                 }
             }
-
-            HorizontalDivider()
-            MathKeyboard(onKey = ::onKey, modifier = Modifier.fillMaxWidth(), solveLabel = if (notebookMode) "Add" else "Solve")
         }
     }
 
@@ -363,6 +417,13 @@ fun SolverScreen() {
             dismissButton = { TextButton(onClick = { confirmClear = false }) { Text("Cancel") } }
         )
     }
+}
+
+/** Taller input box when it holds a matrix, so every row shows (2 rows: 126 dp, 3 rows: 156 dp, …). */
+private fun editorHeight(latex: String): Dp {
+    val rows = Regex("\\\\begin\\{[a-zA-Z]*matrix\\}(.*?)\\\\end\\{", RegexOption.DOT_MATCHES_ALL).findAll(latex)
+        .maxOfOrNull { it.groupValues[1].split("\\\\").size } ?: 1
+    return (96 + (rows - 1) * 30).coerceAtMost(250).dp
 }
 
 /** Shows the typed input with a visible cursor; scrolls sideways for long input. */
@@ -411,8 +472,7 @@ private fun Examples(onPick: (String) -> Unit) {
             EXAMPLES.forEach { ex -> AssistChip(onClick = { onPick(ex) }, label = { Text(ex) }) }
         }
         Text(
-            "Tap inside the problem to move the cursor. ÷ makes a fraction. " +
-                "Eng: k, M, µ, ∥ and dB. Σ lim: limits, sums and y′. Hold ⌫ to clear.",
+            "Tap the problem to move the cursor. Hold ⌫ to clear.",
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant
         )

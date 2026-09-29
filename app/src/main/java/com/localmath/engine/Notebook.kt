@@ -10,10 +10,21 @@ object Notebook {
     data class Result(val solution: Solution, val used: String?)
 
     /** Values of single letters found in earlier answers, oldest first (later ones win). */
-    fun known(answers: List<String?>): Map<Char, Expr> {
-        val out = linkedMapOf<Char, Expr>()
-        for (a in answers) if (a != null) out.putAll(valuesIn(a))
-        return out
+    fun known(answers: List<String?>): Map<Char, Expr> = values(answers).first
+
+    /** Vectors and matrices found in earlier answers (a later number with the same letter replaces them). */
+    fun objects(answers: List<String?>): Map<Char, LVal> = values(answers).second
+
+    private fun values(answers: List<String?>): Pair<Map<Char, Expr>, Map<Char, LVal>> {
+        val numbers = linkedMapOf<Char, Expr>()
+        val objects = linkedMapOf<Char, LVal>()
+        for (a in answers) if (a != null) {
+            val n = valuesIn(a)
+            val o = LinAlg.valuesIn(a)
+            numbers.putAll(n); numbers.keys.removeAll(o.keys)
+            objects.putAll(o); objects.keys.removeAll(n.keys)
+        }
+        return numbers to objects
     }
 
     /** "x = 4" -> {x: 4};  "x = 2,\quad y = 1" -> both;  two roots ("or", ±) -> nothing (ambiguous). */
@@ -34,6 +45,7 @@ object Notebook {
     /** The value to drop into the next line for "Ans": (plain text, LaTeX), or null if there isn't one number. */
     fun ansOf(answer: String?): Pair<String, String>? {
         if (answer == null) return null
+        LinAlg.ansOf(answer)?.let { return it }
         val a = answer.trim().removePrefix("\\approx").trim()
         valuesIn(a).values.singleOrNull()?.let { e ->
             if (valuesIn(a).size == 1) return textOf(e) to Tex.expr(e)
@@ -55,8 +67,23 @@ object Notebook {
         return if (!wrapped && (t.contains(' ') || t.contains('/') || t.startsWith("-"))) "($t)" else t
     }
 
-    /** Solves one line, filling in letters already known from earlier lines. */
-    fun evaluate(text: String, known: Map<Char, Expr>): Result {
+    /**
+     * Solves one line, filling in letters already known from earlier lines.
+     * [objects] are vectors and matrices from earlier lines ([LinAlg.known]).
+     */
+    fun evaluate(text: String, known: Map<Char, Expr>, objects: Map<Char, LVal> = emptyMap()): Result {
+        // gcd, %, ratios, n!, stats, triangles, completing the square: no earlier values needed.
+        if (Extras.accepts(text)) return Result(Extras.solve(text), null)
+        if (LinAlg.accepts(text, objects.keys)) {
+            // Numbers found earlier (k = 3) can scale vectors too.
+            val numbers = known.filterKeys { it !in objects }.mapNotNull { (k, e) ->
+                try { k to LVal.Scal(Sym.from(e)) } catch (_: MathError) { null }
+            }.toMap()
+            val env = numbers + objects
+            val used = LinAlg.namesUsed(text).filter { it in env }
+            val note = if (used.isEmpty()) null else used.joinToString(",\\; ") { "$it = ${LinAlg.tex(env.getValue(it))}" }
+            return Result(LinAlg.solve(text, env), note)
+        }
         val input = Parser.parse(text)
         // Calculus and Σ/lim keep their own letters (x in d/dx(x²) is not the x found earlier).
         val special = { e: Expr -> e.has { it is Expr.Special || it is Expr.Derivative || it is Expr.Integral } }

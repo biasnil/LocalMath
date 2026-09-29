@@ -28,7 +28,10 @@ object LatexInput {
     }
 
     private val FUNCS = setOf("sin", "cos", "tan", "arcsin", "arccos", "arctan", "sinh", "cosh", "tanh",
-        "arsinh", "arcosh", "artanh", "ln", "log", "exp", "sqrt", "abs", "lg", "conj", "arg", "real", "imag")
+        "arsinh", "arcosh", "artanh", "ln", "log", "exp", "sqrt", "abs", "lg", "conj", "arg", "real", "imag") + LinAlg.LA_FUNCS + Extras.FUNCS
+
+    /** Matrix environments from the editor's grid (vmatrix = determinant bars). */
+    private val MATRIX_ENVS = setOf("pmatrix", "bmatrix", "matrix", "Bmatrix", "vmatrix", "smallmatrix")
 
     /** SI prefixes (inserted as \mathrm{k}) and constants (inserted as \mathbf{c}). */
     private val PREFIX = mapOf("T" to 12, "G" to 9, "M" to 6, "k" to 3, "m" to -3, "\\mu" to -6, "µ" to -6, "μ" to -6, "u" to -6, "n" to -9, "p" to -12)
@@ -69,7 +72,7 @@ object LatexInput {
                 c == '}' -> { out += T.Close; i++ }
                 c == '^' -> { out += T.Sup; i++ }
                 c == '_' -> { out += T.Sub; i++ }
-                c.isWhitespace() || c == '~' || c == '&' -> i++
+                c.isWhitespace() || c == '~' -> i++
                 c.isDigit() || (c == '.' && i + 1 < src.length && src[i + 1].isDigit()) -> {
                     var j = i
                     while (j < src.length && (src[j].isDigit() || src[j] == '.')) j++
@@ -195,7 +198,8 @@ object LatexInput {
                     "|" -> { atom(items, if (absOpen) ")" else "abs("); absOpen = !absOpen }
                     "[" -> atom(items, "(")
                     "]" -> atom(items, ")")
-                    "*", "×", "·" -> atom(items, "×")
+                    "*", "×" -> atom(items, "×")
+                    "·", "⋅" -> atom(items, "·")
                     "/", "÷" -> atom(items, "÷")
                     else -> atom(items, c)
                 }
@@ -206,7 +210,13 @@ object LatexInput {
         private fun command(name: String, items: MutableList<Item>) {
             when (name) {
                 ",", ";", ":", "!", " ", "quad", "qquad", "space", "thinspace", "medspace", "thickspace", "displaystyle", "limits", "nolimits" -> {}
-                "cdot", "times", "ast" -> atom(items, "×")
+                "times", "ast" -> atom(items, "×")
+                "cdot" -> atom(items, "·")
+                "%" -> atom(items, "%")
+                "binom" -> { val n = arg(); val r = arg(); atom(items, "nCr($n, $r)") }
+                "angle", "measuredangle" -> atom(items, "∠")
+                "begin" -> matrix(items)
+                "end" -> { rawGroup() }
                 "div" -> atom(items, "÷")
                 "pi" -> atom(items, "π")
                 "infty" -> atom(items, "∞")
@@ -285,6 +295,36 @@ object LatexInput {
                 in FUNCS -> atom(items, name)
                 else -> throw MathError("LocalMath doesn't understand \\$name yet")
             }
+        }
+
+        /** \begin{pmatrix} a & b \\ c & d \end{pmatrix} -> [[a, b], [c, d]]; a single column -> (a, b). */
+        private fun matrix(items: MutableList<Item>) {
+            val env = rawGroup().replace(" ", "")
+            if (env !in MATRIX_ENVS) throw MathError("LocalMath doesn't understand $env yet")
+            val rows = mutableListOf(mutableListOf<String>())
+            while (true) {
+                val cell = mutableListOf<Item>()
+                while (true) {
+                    val tok = peek() ?: throw MathError("The matrix isn't finished")
+                    if (tok is T.Ch && tok.c == "&") break
+                    if (tok is T.Cmd && (tok.name == "\\" || tok.name == "cr" || tok.name == "end")) break
+                    one(cell)
+                }
+                rows.last() += assemble(cell).trim()
+                val sep = next()
+                when {
+                    sep is T.Ch -> {}
+                    sep is T.Cmd && sep.name == "end" -> { rawGroup(); break }
+                    else -> rows += mutableListOf<String>()
+                }
+            }
+            val clean = rows.filter { r -> r.any { it.isNotBlank() } }
+            if (clean.isEmpty()) throw MathError("The matrix is empty")
+            if (clean.any { r -> r.any { it.isBlank() } }) throw MathError("Please fill in every box of the matrix")
+            if (clean.map { it.size }.toSet().size != 1) throw MathError("Every row of a matrix needs the same number of entries")
+            val text = if (clean.size >= 2 && clean.all { it.size == 1 }) clean.joinToString(", ", "(", ")") { it[0] }
+                else clean.joinToString(", ", "[", "]") { r -> r.joinToString(", ", "[", "]") }
+            atom(items, if (env == "vmatrix") "det($text)" else text)
         }
 
         private fun roman(cmd: String, items: MutableList<Item>) {
@@ -383,7 +423,13 @@ object LatexInput {
 
     // ---------------- text -> LaTeX (to load history into the editor) ----------------
 
-    fun fromText(text: String): String = when (val input = Parser.parse(text)) {
+    fun fromText(text: String): String {
+        if (Extras.accepts(text)) return Extras.toLatex(text)
+        if (LinAlg.accepts(text)) return LinAlg.toLatex(text)
+        return fromParsed(text)
+    }
+
+    private fun fromParsed(text: String): String = when (val input = Parser.parse(text)) {
         is Input.Expression -> Tex.expr(input.expr)
         is Input.Equation -> Tex.equation(input.left, input.right)
         is Input.System -> input.equations.joinToString(";\\;") { Tex.equation(it.left, it.right) }

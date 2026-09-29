@@ -24,6 +24,62 @@ If Android Studio offers to upgrade the Android Gradle Plugin, it's safe to acce
   infinitely-many cases
 - History of solved problems (Room database, stored only on the device)
 
+### New in 0.8.2 (numbers, statistics, triangles)
+
+- **Numbers**: `gcd(12, 18)`, `lcm(4, 6, 10)` (by prime factors), `factor(360)` (division ladder → 2³ × 3² × 5)
+- **Percentages**: `15% of 80`, `80 + 15%`, `80 − 15%`, `20 as % of 80`, `80 to 92 as %` (percentage change)
+- **Ratios**: `12:18` (simplify, also with decimals), `share 60 in 2:3`, `3:5 = x:20` (proportion)
+- **Counting**: `5!`, `nCr(10, 3)` or `10C3`, `nPr(10, 3)`, and the binomial theorem for `(2x + 3)^5` (powers 3 to 12,
+  with Pascal's triangle); `(x + 1)^2` still just expands
+- **Statistics**: `stats(2, 4, 4, 5, 7, 9)` gives mean, median, mode, range, quartiles and IQR (medians of the halves),
+  variance, and both σ (population) and s (sample); or ask for one: `mean( )`, `median( )`, `mode( )`, `sd( )`,
+  `var( )`, `quartiles( )`
+- **Triangles**: `triangle(a = 5, b = 7, C = 60°)` — any three of the sides a, b, c and the opposite angles A, B, C
+  (at least one side). Cosine rule for SSS and SAS, sine rule for ASA/AAS, and the ambiguous SSA case gives both
+  triangles. Area ½ab sin C and perimeter.
+- **Completing the square**: `complete(2x² − 8x + 3)` → 2(x − 2)² − 5 with the vertex and a graph;
+  `complete(x² − 4x + 1 = 0)` solves the equation that way
+- New **n!** keyboard page for all of these (hold "of" for "as % of")
+- Normal: the input box grows for matrices so a 3 × 3 isn't cut off. Matrix tab: fits narrow phones and moves up
+  above the phone's keyboard.
+
+### New in 0.8.0 (vectors and matrices)
+
+- **Vectors (2D)** — type components `(3, 4)` or length∠angle `5∠30°` (a plain angle is in degrees; with π or °
+  it is used as written). Name them with `;`: `a = (3, 5); b = (4, 2); a + b`.
+  - Sums and differences step by step, like the NASA "Vector Addition" diagram: add the x-components, add the
+    y-components, then the magnitude by Pythagoras and the direction (0°–360° from the positive x-axis, with the
+    reference angle and quadrant)
+  - A head-to-tail diagram with every sum: given vectors from the origin in blue, the moved vector in the text colour,
+    the resultant in red, and dashed components labelled a_x, b_x, a_y, b_y, c_x = a_x + b_x, c_y = a_y + b_y
+  - Scalar multiples (`2a`, `a/2`, `−a`), magnitude `|a|`, polar form `polar(a)`, dot product `a · b` (says when the
+    vectors are perpendicular), 2D cross product `a × b` (the signed parallelogram area; 3D vectors also work),
+    `angle(a, b)`, `unit(a)`, `proj(a, b)` (scalar and vector projection)
+- **Matrices** — `[[1, 2], [3, 4]]` in text, or the [2×2] / [3×3] keys (+row / +col to grow them). Exact fractions,
+  up to 6 × 6.
+  - `A + B`, `A − B`, `3A`, `A B` (each entry written out as row · column), `A (5, 6)`, `A^3`, `A^-1`, `A^T`
+  - `det(A)` or `|A|`: ad − bc for 2 × 2, cofactor expansion along the row or column with the most zeros for 3 × 3,
+    row reduction for bigger ones
+  - `inv(A)`: the 2 × 2 formula, or Gauss–Jordan on [A | I] with every row operation shown, then a check that
+    A·A⁻¹ = I
+  - `ref(A)`, `rref(A)`, `rank(A)`, `trace(A)`
+  - `eig(A)`: the characteristic equation det(A − λI) = 0, the eigenvalues, and an eigenvector for each
+    (irrational and complex ones exactly for 2 × 2)
+  - `A x = b` (x not defined yet) or `solve(A, b)`: augmented-matrix row reduction; one solution, no solution, or
+    infinitely many written with parameters t, s, …
+- New **[ ]** keyboard page for all of the above. The basic × key now types `·`, so between two vectors it means the
+  dot product; × (the cross product) is on the [ ] page. For numbers both still just multiply.
+- **Matrix tab** (next to Normal and Notebook): fill in Matrix A and Matrix B as boxes (blank = 0, fractions like
+  1/2 work), ⇄ to swap, − / + to resize (1 × 1 to 6 × 6), then tap Determinant, Inverse, Transpose, Rank,
+  Multiply by, Row echelon form, Diagonal matrix, To the power of, LU decomposition, Cholesky decomposition,
+  A × B, A + B, A − B, or type an expression like `2A + 3B`. The answer shows with full steps; ▴ Edit matrices
+  goes back to the boxes.
+  - `lu(A)`: A = LU (or PA = LU when a row swap is needed), `chol(A)`: A = LLᵀ (exact square roots),
+    `diag(A)`: A = PDP⁻¹ when every eigenvalue is a whole number or fraction
+- **▾ Hide keys / ▴ Keys**: hide the keyboard to see more of the answer; Solve stays available.
+- **Notebook**: vectors and matrices carry over to later lines (`a = (3, 5)`, then `2a + b`, then `|c|`). A later
+  number with the same letter replaces a vector, and the other way round.
+
 ### New in 0.7.0 (complex numbers, compound inequalities, more ODEs, finance formulas)
 
 - **Complex numbers** — `i` is √−1 (new `i` key on the f(x) page). Arithmetic with steps: multiplying out with
@@ -115,6 +171,13 @@ solutions for everything else (see above).
 | Inequality | `x² − 4 ≥ 0`, or two signs: `1 < x ≤ 3` |
 | Complex number | `(3 + 2i)(1 − 4i)`, `abs(3 + 4i)`, `arg(z)`, `conj(z)`, `real(z)`, `imag(z)` |
 | Differential equation | `y'' + y = sin(x); y(0) = 1; y'(0) = 0` |
+| Vector | `(3, 4)`, `5∠30°` (degrees), `5∠π/6` (radians) |
+| Named vectors | `a = (3, 5); b = 5∠30°; a + b` |
+| Dot / cross product | `a · b`, `a × b` (or `dot(a, b)`, `cross(a, b)`) |
+| Length, angle, unit, projection | `|a|`, `angle(a, b)`, `unit(a)`, `proj(a, b)`, `polar(a)` |
+| Matrix | `[[1, 2], [3, 4]]` |
+| Matrix operations | `A B`, `A^2`, `A^-1`, `A^T`, `det(A)`, `inv(A)`, `rref(A)`, `ref(A)`, `rank(A)`, `trace(A)`, `eig(A)`, `lu(A)`, `chol(A)`, `diag(A)` |
+| Matrix equation | `A = [[2, 1], [1, -1]]; A x = (5, 1)` or `solve(A, (5, 1))` |
 
 Missing closing brackets are added automatically. Hold ⌫ to clear. `e` is always Euler's number and `i` is always √−1
 (except as the counter in `Σ(i², i, 1, 10)`, and inside the formula library where letters are just labels).
@@ -126,9 +189,10 @@ a possibly wrong answer.
 
 ## Layout
 - `engine/` — pure Kotlin, no Android dependencies (Parser, Sym, Differentiator, Integrator,
-  Calculus, SystemSolver, Equations, RatFunc, Inequalities, Complex, Ode, Graph, Solver)
+  Calculus, SystemSolver, Equations, RatFunc, Inequalities, Complex, Ode, Graph, Solver, and LinAlg / Vectors /
+  Matrices for vectors and matrices)
 - `ui/` — Compose screens and the keyboard; `MathView` shows the page built by `SolutionHtml`
-  (KaTeX from `assets/katex`, graphs drawn by `assets/plot.js`)
+  (KaTeX from `assets/katex`, graphs drawn by `assets/plot.js`, vector diagrams as inline SVG)
 - `data/` — Room history
 
 KaTeX (MIT licence) is bundled in `app/src/main/assets/katex`.

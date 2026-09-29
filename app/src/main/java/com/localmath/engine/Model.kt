@@ -11,7 +11,8 @@ data class Solution(
     val steps: List<Step>,
     val answer: String,          // LaTeX
     val approx: String? = null,  // LaTeX, shown under the answer
-    val graph: Graph? = null
+    val graph: Graph? = null,
+    val diagram: VectorDiagram? = null   // vector problems: the head-to-tail picture
 )
 
 /** Thrown for anything the user typed that the engine can't handle; the message is shown in the UI. */
