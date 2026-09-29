@@ -28,7 +28,7 @@ object LatexInput {
     }
 
     private val FUNCS = setOf("sin", "cos", "tan", "arcsin", "arccos", "arctan", "sinh", "cosh", "tanh",
-        "arsinh", "arcosh", "artanh", "ln", "log", "exp", "sqrt", "abs", "lg", "conj", "arg", "real", "imag") + LinAlg.LA_FUNCS + Extras.FUNCS
+        "arsinh", "arcosh", "artanh", "ln", "log", "exp", "sqrt", "abs", "lg", "conj", "arg", "real", "imag") + LinAlg.LA_FUNCS + Extras.FUNCS + "table"
 
     /** Matrix environments from the editor's grid (vmatrix = determinant bars). */
     private val MATRIX_ENVS = setOf("pmatrix", "bmatrix", "matrix", "Bmatrix", "vmatrix", "smallmatrix")
@@ -215,6 +215,19 @@ object LatexInput {
                 "%" -> atom(items, "%")
                 "binom" -> { val n = arg(); val r = arg(); atom(items, "nCr($n, $r)") }
                 "angle", "measuredangle" -> atom(items, "∠")
+                // Logic
+                "neg", "lnot" -> atom(items, "¬")
+                "land", "wedge" -> atom(items, "∧")
+                "lor", "vee" -> atom(items, "∨")
+                "Rightarrow", "implies", "Longrightarrow" -> atom(items, "→")
+                "leftrightarrow", "Leftrightarrow", "iff", "longleftrightarrow", "Longleftrightarrow" -> atom(items, "↔")
+                "equiv" -> atom(items, "≡")
+                "oplus" -> atom(items, "⊕")
+                "models", "vDash", "vdash" -> atom(items, "⊨")
+                "top" -> atom(items, "⊤")
+                "bot" -> atom(items, "⊥")
+                "uparrow" -> atom(items, "↑")
+                "downarrow" -> atom(items, "↓")
                 "begin" -> matrix(items)
                 "end" -> { rawGroup() }
                 "div" -> atom(items, "÷")
@@ -425,6 +438,7 @@ object LatexInput {
 
     fun fromText(text: String): String {
         if (Extras.accepts(text)) return Extras.toLatex(text)
+        if (Logic.accepts(text)) return Logic.toLatex(text)
         if (LinAlg.accepts(text)) return LinAlg.toLatex(text)
         return fromParsed(text)
     }

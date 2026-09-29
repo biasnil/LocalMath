@@ -7,6 +7,7 @@ object Solver {
 
     fun solve(source: String): Solution =
         if (Extras.accepts(source)) Extras.solve(source)
+        else if (Logic.accepts(source)) Logic.solve(source)
         else if (LinAlg.accepts(source)) LinAlg.solve(source) else solve(Parser.parse(source))
 
     fun solve(input: Input): Solution = when (input) {

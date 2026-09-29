@@ -73,6 +73,8 @@ private val EXAMPLES = listOf(
     "triangle(a = 5, b = 7, C = 60°)",
     "stats(2, 4, 4, 5, 7, 9)",
     "complete(x² + 6x + 5)",
+    "p → q, p ⊨ q",
+    "m(0, 2, 5, 7, 8, 10, 13, 15)",
     "2x + 3 = 7",
     "x² − 5x + 6 = 0",
     "x³ − 6x² + 11x − 6 = 0",

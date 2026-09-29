@@ -12,7 +12,8 @@ data class Solution(
     val answer: String,          // LaTeX
     val approx: String? = null,  // LaTeX, shown under the answer
     val graph: Graph? = null,
-    val diagram: VectorDiagram? = null   // vector problems: the head-to-tail picture
+    val diagram: VectorDiagram? = null,  // vector problems: the head-to-tail picture
+    val kmap: KarnaughMap? = null        // logic problems: the Karnaugh map with its groups
 )
 
 /** Thrown for anything the user typed that the engine can't handle; the message is shown in the UI. */

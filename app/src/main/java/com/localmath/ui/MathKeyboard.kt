@@ -38,7 +38,7 @@ sealed class KeyAction {
     object Solve : KeyAction()
     /** A tap-to-edit editor command (MathLive, e.g. "addRowAfter"); [text] is typed instead in plain-text mode. */
     data class Command(val name: String, val text: String) : KeyAction()
-    /** 0 = numbers, 1 = functions, 2 = calculus (lim, Σ, aₙ, y′), 3 = engineering, 4 = vectors and matrices, 5 = numbers & statistics. */
+    /** 0 = numbers, 1 = functions, 2 = calculus (lim, Σ, aₙ, y′), 3 = engineering, 4 = vectors and matrices, 5 = numbers & statistics, 6 = logic. */
     data class GoToPage(val page: Int) : KeyAction()
 }
 
@@ -137,6 +137,18 @@ private val NUMBERS = listOf(
     listOf(digit("1"), digit("2"), digit("3"), digit("0"), digit("."), fn("x", "x")),
 )
 
+// Logic: ¬ ∧ ∨ → ↔ ≡ ⊕ ⊨, ⊤ ⊥, NAND ↑ / NOR ↓, m( ) minterms and table( ) outputs.
+private val LOGIC = listOf(
+    listOf(op("¬", "¬", "\\neg "), op("∧", "∧", "\\land "), op("∨", "∨", "\\lor "), op("→", "→", "\\to "),
+        op("↔", "↔", "\\leftrightarrow "), BACKSPACE),
+    listOf(op("≡", "≡", "\\equiv "), op("⊕", "⊕", "\\oplus "), op("⊨", "⊨", "\\models "), op(","),
+        fn("⊤", "⊤", "\\top "), fn("⊥", "⊥", "\\bot ")),
+    listOf(fn("p", "p"), fn("q", "q"), fn("r", "r"), fn("s", "s"), op("("), op(")")),
+    listOf(fn("A", "A"), fn("B", "B"), fn("C", "C"), fn("D", "D"), op("↑", "↑", "\\uparrow "), op("↓", "↓", "\\downarrow ")),
+    listOf(fn("m( )", "m(", "m\\left(#0\\right)"), fn("table", "table(", "\\operatorname{table}\\left(#0\\right)"),
+        digit("0"), digit("1"), op("′", "'", "'"), op(";")),
+)
+
 @Composable
 fun MathKeyboard(onKey: (KeyAction) -> Unit, modifier: Modifier = Modifier, solveLabel: String = "Solve") {
     val haptics = LocalHapticFeedback.current
@@ -147,7 +159,7 @@ fun MathKeyboard(onKey: (KeyAction) -> Unit, modifier: Modifier = Modifier, solv
         if (a is KeyAction.GoToPage) page = a.page else onKey(a)
     }
 
-    val grid = when (page) { 1 -> FUNCTIONS; 2 -> CALCULUS; 3 -> ENGINEERING; 4 -> VECTORS; 5 -> NUMBERS; else -> BASIC }
+    val grid = when (page) { 1 -> FUNCTIONS; 2 -> CALCULUS; 3 -> ENGINEERING; 4 -> VECTORS; 5 -> NUMBERS; 6 -> LOGIC; else -> BASIC }
     // Bottom-row keys use span 2 (Solve 3) so eight keys fit with a wider Solve.
     fun pageKey(target: Int, label: String) =
         if (page == target) KeySpec("123", KeyAction.GoToPage(0), KeyStyle.Action, span = 2)
@@ -159,6 +171,7 @@ fun MathKeyboard(onKey: (KeyAction) -> Unit, modifier: Modifier = Modifier, solv
             pageKey(3, "Eng"),
             pageKey(4, "[ ]"),
             pageKey(5, "n!"),
+            pageKey(6, "∧∨"),
             KeySpec("◀", KeyAction.Left, KeyStyle.Action, span = 2),
             KeySpec("▶", KeyAction.Right, KeyStyle.Action, span = 2),
             KeySpec(solveLabel, KeyAction.Solve, KeyStyle.Primary, span = 3),

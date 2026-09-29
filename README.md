@@ -24,6 +24,22 @@ If Android Studio offers to upgrade the Android Gradle Plugin, it's safe to acce
   infinitely-many cases
 - History of solved problems (Room database, stored only on the device)
 
+### New in 0.8.3 (logic)
+
+- **Truth tables** for propositional logic (`p → q`, `¬p ∧ (q ∨ r)`, or words `p AND q OR NOT r`, `->`, `<->`) and
+  Boolean algebra (`A'B + AB'`, `AB + C`), with a column for every part of the formula. Operators: ¬ ∧ ∨ → ↔ ≡ ⊕,
+  NAND ↑, NOR ↓, ⊤ / ⊥ (or 1 / 0). Up to 6 letters (64 rows).
+- **Properties**: tautology, contradiction or contingent (and how many rows are true)
+- **Equivalent forms**: minterms Σm and maxterms ΠM, canonical DNF and CNF, and the minimal sum of products and
+  product of sums (Quine–McCluskey, with the prime implicants and essential ones)
+- **Karnaugh map** for 2–4 letters, drawn with a coloured ring around each group (groups that wrap around the edges
+  are ringed in pieces)
+- **Equivalence**: `p → q ≡ ¬p ∨ q` compares the truth tables and shows a row where they differ if they don't match
+- **Arguments**: `p → q, p ⊨ q` checks validity by truth table and gives a counterexample row if it fails
+- **Truth table → expression**: `table(0, 1, 1, 0)` (outputs from the all-0 row up), `m(1, 3, 5, 7)` minterms or
+  `M(0, 3)` maxterms, optionally with letters: `m(1, 2; X, Y)`
+- New **∧∨** keyboard page
+
 ### New in 0.8.2 (numbers, statistics, triangles)
 
 - **Numbers**: `gcd(12, 18)`, `lcm(4, 6, 10)` (by prime factors), `factor(360)` (division ladder → 2³ × 3² × 5)
@@ -178,6 +194,7 @@ solutions for everything else (see above).
 | Matrix | `[[1, 2], [3, 4]]` |
 | Matrix operations | `A B`, `A^2`, `A^-1`, `A^T`, `det(A)`, `inv(A)`, `rref(A)`, `ref(A)`, `rank(A)`, `trace(A)`, `eig(A)`, `lu(A)`, `chol(A)`, `diag(A)` |
 | Matrix equation | `A = [[2, 1], [1, -1]]; A x = (5, 1)` or `solve(A, (5, 1))` |
+| Logic | `p → q`, `A'B + AB'`, `p → q ≡ ¬p ∨ q`, `p → q, p ⊨ q`, `m(0, 2, 5, 7)`, `table(0, 1, 1, 0)` |
 
 Missing closing brackets are added automatically. Hold ⌫ to clear. `e` is always Euler's number and `i` is always √−1
 (except as the counter in `Σ(i², i, 1, 10)`, and inside the formula library where letters are just labels).

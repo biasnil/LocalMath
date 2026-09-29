@@ -2,6 +2,7 @@ package com.localmath.ui
 
 import com.localmath.engine.DStyle
 import com.localmath.engine.Eng
+import com.localmath.engine.KarnaughMap
 import com.localmath.engine.VectorDiagram
 
 import com.localmath.engine.Graph
@@ -46,7 +47,7 @@ object SolutionHtml {
             (s.approx?.let { "<div class=\"approx\">\\(${esc(it)}\\)</div>" } ?: "") + "</div>"
 
         val graph = s.graph?.let { graphHtml(it, c) } ?: ""
-        val diagram = s.diagram?.let { diagramHtml(it, c) } ?: ""
+        val diagram = (s.diagram?.let { diagramHtml(it, c) } ?: "") + (s.kmap?.let { kmapHtml(it, c) } ?: "")
 
         return """<!DOCTYPE html>
 <html><head>
@@ -264,6 +265,65 @@ $steps
             "<div><span class=\"sw\" style=\"background:${color(st)}\"></span>${esc(text)}</div>"
         }
         return "<div class=\"card\">$out<div class=\"legend\">$legend</div></div>"
+    }
+
+    // ================= Karnaugh maps =================
+
+    private val GROUP_COLORS = listOf("#e5483f", "#3478e5", "#2e9d5b", "#d98a00", "#8e44ad", "#16a2b8", "#c2185b", "#6d4c41")
+
+    /** The map as a grid (rows and columns in Gray-code order) with a coloured ring around each group. */
+    fun kmapHtml(k: KarnaughMap, c: MathColors): String {
+        val rows = k.cells.size
+        val cols = k.cells[0].size
+        val cell = 46.0
+        val left = 58.0
+        val top = 52.0
+        val w = left + cols * cell + 12
+        val h = top + rows * cell + 12
+        val out = StringBuilder()
+        out.append("<svg class=\"vec\" style=\"max-width:${f(w * 1.25)}px\" viewBox=\"0 0 ${f(w)} ${f(h)}\" xmlns=\"http://www.w3.org/2000/svg\">")
+        // Headings: row letters on the left, column letters on top, with a diagonal like a textbook map.
+        out.append("<line x1=\"${f(left - 34)}\" y1=\"${f(top - 34)}\" x2=\"${f(left)}\" y2=\"${f(top)}\" stroke=\"${c.muted}\" stroke-width=\"1\"/>")
+        out.append("<text x=\"${f(left - 30)}\" y=\"${f(top - 4)}\" font-size=\"13\" fill=\"${c.text}\" text-anchor=\"middle\">${xml(k.rowVars)}</text>")
+        out.append("<text x=\"${f(left - 4)}\" y=\"${f(top - 36)}\" font-size=\"13\" fill=\"${c.text}\" text-anchor=\"middle\">${xml(k.colVars)}</text>")
+        for (j in 0 until cols) out.append("<text class=\"tick\" x=\"${f(left + j * cell + cell / 2)}\" y=\"${f(top - 10)}\" font-size=\"12\" fill=\"${c.muted}\" text-anchor=\"middle\">${k.colLabels[j]}</text>")
+        for (i in 0 until rows) out.append("<text class=\"tick\" x=\"${f(left - 10)}\" y=\"${f(top + i * cell + cell / 2 + 4)}\" font-size=\"12\" fill=\"${c.muted}\" text-anchor=\"end\">${k.rowLabels[i]}</text>")
+        for (i in 0 until rows) for (j in 0 until cols) {
+            val x = left + j * cell; val y = top + i * cell
+            val one = k.cells[i][j] == 1
+            out.append("<rect x=\"${f(x)}\" y=\"${f(y)}\" width=\"${f(cell)}\" height=\"${f(cell)}\" fill=\"none\" stroke=\"${c.outline}\" stroke-width=\"1\"/>")
+            out.append("<text class=\"tick\" x=\"${f(x + cell / 2)}\" y=\"${f(y + cell / 2 + 6)}\" font-size=\"17\" " +
+                "fill=\"${if (one) c.text else c.muted}\" font-weight=\"${if (one) "700" else "400"}\" text-anchor=\"middle\">${if (one) 1 else 0}</text>")
+        }
+        // Each group may wrap around the edges, so ring each connected block of it separately.
+        for ((gi, g) in k.groups.withIndex()) {
+            val col = GROUP_COLORS[gi % GROUP_COLORS.size]
+            val inset = 4.0 + (gi % 3) * 3
+            val left0 = g.toMutableSet()
+            while (left0.isNotEmpty()) {
+                val start = left0.first()
+                val block = mutableSetOf(start)
+                val queue = ArrayDeque(listOf(start))
+                left0.remove(start)
+                while (queue.isNotEmpty()) {
+                    val (r, cc) = queue.removeFirst()
+                    for ((dr, dc) in listOf(1 to 0, -1 to 0, 0 to 1, 0 to -1)) {
+                        val nb = (r + dr) to (cc + dc)
+                        if (nb in left0) { left0.remove(nb); block += nb; queue += nb }
+                    }
+                }
+                val r0 = block.minOf { it.first }; val r1 = block.maxOf { it.first }
+                val c0 = block.minOf { it.second }; val c1 = block.maxOf { it.second }
+                out.append("<rect x=\"${f(left + c0 * cell + inset)}\" y=\"${f(top + r0 * cell + inset)}\" " +
+                    "width=\"${f((c1 - c0 + 1) * cell - 2 * inset)}\" height=\"${f((r1 - r0 + 1) * cell - 2 * inset)}\" rx=\"12\" " +
+                    "fill=\"$col\" fill-opacity=\"0.12\" stroke=\"$col\" stroke-width=\"2.5\"/>")
+            }
+        }
+        out.append("</svg>")
+        val legend = k.groups.indices.joinToString("") { gi ->
+            "<div><span class=\"sw\" style=\"background:${GROUP_COLORS[gi % GROUP_COLORS.size]}\"></span>${esc(k.groupNames[gi])}</div>"
+        }
+        return "<div class=\"card\"><div class=\"hint\">Karnaugh map</div>$out<div class=\"legend\">$legend</div></div>"
     }
 
     private fun graphHtml(g: Graph, c: MathColors): String {

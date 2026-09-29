@@ -74,6 +74,7 @@ object Notebook {
     fun evaluate(text: String, known: Map<Char, Expr>, objects: Map<Char, LVal> = emptyMap()): Result {
         // gcd, %, ratios, n!, stats, triangles, completing the square: no earlier values needed.
         if (Extras.accepts(text)) return Result(Extras.solve(text), null)
+        if (Logic.accepts(text)) return Result(Logic.solve(text), null)
         if (LinAlg.accepts(text, objects.keys)) {
             // Numbers found earlier (k = 3) can scale vectors too.
             val numbers = known.filterKeys { it !in objects }.mapNotNull { (k, e) ->
